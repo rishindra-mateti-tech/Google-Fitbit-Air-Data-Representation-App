@@ -11,7 +11,6 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.DirectionsWalk
 import androidx.compose.material.icons.filled.Bedtime
 import androidx.compose.material.icons.filled.Favorite
-import androidx.compose.material.icons.filled.LocalFireDepartment
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Timeline
 import androidx.compose.material3.Icon
@@ -21,7 +20,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
@@ -32,24 +30,10 @@ import com.vayu.health.data.model.HealthDashboardState
 import com.vayu.health.data.model.ProvenanceFormatter
 import com.vayu.health.ui.components.GlassPill
 import com.vayu.health.ui.components.VayuTab
-import com.vayu.health.ui.theme.CardBackgroundGlass
-import com.vayu.health.ui.theme.EnergyAmber
-import com.vayu.health.ui.theme.GlassBorder
-import com.vayu.health.ui.theme.HeartCrimson
-import com.vayu.health.ui.theme.HrvEmerald
-import com.vayu.health.ui.theme.RespirationTeal
-import com.vayu.health.ui.theme.SleepRem
-import com.vayu.health.ui.theme.Spo2Blue
-import com.vayu.health.ui.theme.TextMuted
-import com.vayu.health.ui.theme.TextPrimary
-import com.vayu.health.ui.theme.TextUnavailable
-import com.vayu.health.ui.theme.VayuCyan
+import com.vayu.health.ui.theme.*
 import com.vayu.health.ui.viewmodel.HealthDashboardViewModel
 
-/**
- * A compact, Baro-inspired overview. It deliberately renders only raw Health
- * Connect values; score rings, readiness, strain and baselines are excluded.
- */
+/** Reference-driven overview: compact, restrained and strictly source-faithful. */
 @Composable
 fun BaroOverviewScreen(
     state: HealthDashboardState,
@@ -58,196 +42,122 @@ fun BaroOverviewScreen(
     modifier: Modifier = Modifier
 ) {
     val activity = state.activity
-    val sleep = state.sleep
-    val scroll = rememberScrollState()
-    val sourceLabel = ProvenanceFormatter.formatCompact(state.selectedSource)
-
+    val source = ProvenanceFormatter.formatCompact(state.selectedSource)
     Column(
-        modifier = modifier
-            .fillMaxSize()
-            .verticalScroll(scroll)
-            .padding(horizontal = 16.dp, vertical = 14.dp)
+        modifier = modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 20.dp, vertical = 14.dp)
     ) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.SpaceBetween
-        ) {
-            Column {
-                Text("TODAY", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = TextMuted, letterSpacing = 1.2.sp)
-                Text("Your health", fontSize = 28.sp, fontWeight = FontWeight.ExtraBold, color = TextPrimary, letterSpacing = (-0.7).sp)
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
+            GlassPill(text = source, dotColor = VayuCyan)
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                Text("Today", fontSize = 22.sp, fontWeight = FontWeight.Bold, color = TextPrimary)
+                Text(viewModel.getFormattedDate(), fontSize = 11.sp, fontWeight = FontWeight.Medium, color = TextMuted)
             }
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                GlassPill(text = sourceLabel, dotColor = VayuCyan)
-                Spacer(Modifier.width(6.dp))
-                IconButton(onClick = { viewModel.loadMetrics(forceRefresh = true) }) {
-                    Icon(Icons.Default.Refresh, contentDescription = "Refresh Health Connect data", tint = TextPrimary)
-                }
+            IconButton(onClick = { viewModel.loadMetrics(forceRefresh = true) }) {
+                Icon(Icons.Default.Refresh, "Refresh Health Connect data", tint = TextPrimary, modifier = Modifier.size(21.dp))
             }
         }
+        Spacer(Modifier.height(30.dp))
 
+        SectionHeading("ACTIVITY", "Tap to explore") { onOpenTab(VayuTab.ACTIVITY) }
+        Spacer(Modifier.height(10.dp))
+        ActivitySummaryCard(activity?.steps, activity?.totalCaloriesKcal, activity?.distanceMeters) { onOpenTab(VayuTab.ACTIVITY) }
+
+        Spacer(Modifier.height(28.dp))
+        SectionHeading("PINNED", "Health Connect records")
         Spacer(Modifier.height(6.dp))
+        Text("Today", fontSize = 13.sp, color = TextMuted, modifier = Modifier.padding(bottom = 14.dp))
+
+        ReferenceMetricGrid(state, onOpenTab)
+
+        Spacer(Modifier.height(26.dp))
         Text(
-            text = viewModel.getFormattedDate(),
-            fontSize = 13.sp,
-            color = TextMuted,
-            fontWeight = FontWeight.Medium
+            "Every number is an original Health Connect record. Vayu does not add scores, estimates, trends, or medical interpretation.",
+            fontSize = 11.sp, lineHeight = 16.sp, color = TextMuted, modifier = Modifier.padding(horizontal = 2.dp)
         )
-        Spacer(Modifier.height(18.dp))
-
-        Text("TODAY AT A GLANCE", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = TextMuted, letterSpacing = 1.sp)
-        Spacer(Modifier.height(10.dp))
-
-        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            HealthMetricCard(
-                title = "Actual sleep",
-                value = sleep?.actualSleepDurationMinutes?.let { "${it / 60}h ${it % 60}m" },
-                subtitle = if (sleep != null) "Recorded sleep session" else "No sleep session today",
-                icon = Icons.Default.Bedtime,
-                accent = SleepRem,
-                onClick = { onOpenTab(VayuTab.SLEEP) },
-                modifier = Modifier.weight(1f)
-            )
-            HealthMetricCard(
-                title = "Heart rate",
-                value = state.heartRate?.latestBpm?.toString(),
-                unit = "bpm",
-                subtitle = if (state.heartRate?.latestBpm != null) "Latest recorded sample" else "No samples today",
-                icon = Icons.Default.Favorite,
-                accent = HeartCrimson,
-                onClick = { onOpenTab(VayuTab.VITALS) },
-                modifier = Modifier.weight(1f)
-            )
-        }
-
-        Spacer(Modifier.height(12.dp))
-        Text("ACTIVITY", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = TextMuted, letterSpacing = 1.sp)
-        Spacer(Modifier.height(10.dp))
-
-        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            HealthMetricCard(
-                title = "Steps",
-                value = activity?.steps?.let { "%,d".format(it) },
-                subtitle = if (activity?.steps != null) "Health Connect total" else "No steps today",
-                icon = Icons.AutoMirrored.Filled.DirectionsWalk,
-                accent = VayuCyan,
-                onClick = { onOpenTab(VayuTab.ACTIVITY) },
-                modifier = Modifier.weight(1f)
-            )
-            HealthMetricCard(
-                title = "Total energy",
-                value = activity?.totalCaloriesKcal?.let { "%.0f".format(it) },
-                unit = "kcal",
-                subtitle = if (activity?.totalCaloriesKcal != null) "Health Connect total" else "No energy record",
-                icon = Icons.Default.LocalFireDepartment,
-                accent = EnergyAmber,
-                onClick = { onOpenTab(VayuTab.ACTIVITY) },
-                modifier = Modifier.weight(1f)
-            )
-        }
-
-        Spacer(Modifier.height(12.dp))
-        Text("VITALS", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = TextMuted, letterSpacing = 1.sp)
-        Spacer(Modifier.height(10.dp))
-
-        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            HealthMetricCard(
-                title = "Resting HR",
-                value = state.restingHeartRate?.beatsPerMinute?.toString(),
-                unit = "bpm",
-                subtitle = if (state.restingHeartRate != null) "Original record" else "No record today",
-                icon = Icons.Default.Favorite,
-                accent = HeartCrimson,
-                onClick = { onOpenTab(VayuTab.VITALS) },
-                modifier = Modifier.weight(1f)
-            )
-            HealthMetricCard(
-                title = "HRV (RMSSD)",
-                value = state.hrv?.let { "%.1f".format(it.rmssdMillis) },
-                unit = "ms",
-                subtitle = if (state.hrv != null) "Original record" else "No record today",
-                icon = Icons.Default.Timeline,
-                accent = HrvEmerald,
-                onClick = { onOpenTab(VayuTab.VITALS) },
-                modifier = Modifier.weight(1f)
-            )
-        }
-
-        Spacer(Modifier.height(12.dp))
-        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            HealthMetricCard(
-                title = "Blood oxygen",
-                value = state.respiratory?.spo2Percentage?.let { "%.1f".format(it) },
-                unit = "%",
-                subtitle = if (state.respiratory?.spo2Percentage != null) "Original record" else "No record today",
-                icon = Icons.Default.Timeline,
-                accent = Spo2Blue,
-                onClick = { onOpenTab(VayuTab.VITALS) },
-                modifier = Modifier.weight(1f)
-            )
-            HealthMetricCard(
-                title = "Respiratory rate",
-                value = state.respiratory?.breathsPerMinute?.let { "%.1f".format(it) },
-                unit = "br/min",
-                subtitle = if (state.respiratory?.breathsPerMinute != null) "Original record" else "No record today",
-                icon = Icons.Default.Timeline,
-                accent = RespirationTeal,
-                onClick = { onOpenTab(VayuTab.VITALS) },
-                modifier = Modifier.weight(1f)
-            )
-        }
-
-        Spacer(Modifier.height(18.dp))
-        Text(
-            text = "Tap any card to explore its original Health Connect records. Vayu does not calculate readiness, strain, stress, or sleep scores.",
-            fontSize = 12.sp,
-            lineHeight = 17.sp,
-            color = TextMuted,
-            modifier = Modifier.padding(horizontal = 4.dp)
-        )
-        Spacer(Modifier.height(88.dp))
+        Spacer(Modifier.height(92.dp))
     }
 }
 
 @Composable
-private fun HealthMetricCard(
-    title: String,
-    value: String?,
-    subtitle: String,
-    icon: ImageVector,
-    accent: Color,
-    onClick: () -> Unit,
-    modifier: Modifier = Modifier,
-    unit: String? = null
-) {
-    val shape = RoundedCornerShape(24.dp)
+private fun ReferenceMetricGrid(state: HealthDashboardState, onOpenTab: (VayuTab) -> Unit) {
+    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+        ReferenceMetricCard("Resting HR", state.restingHeartRate?.beatsPerMinute?.toString(), "bpm", Icons.Default.Favorite, HeartCrimson, { onOpenTab(VayuTab.VITALS) }, Modifier.weight(1f))
+        ReferenceMetricCard("HRV", state.hrv?.let { "%.1f".format(it.rmssdMillis) }, "ms", Icons.Default.Timeline, HrvEmerald, { onOpenTab(VayuTab.VITALS) }, Modifier.weight(1f))
+    }
+    Spacer(Modifier.height(14.dp))
+    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+        ReferenceMetricCard("Resp. rate", state.respiratory?.breathsPerMinute?.let { "%.1f".format(it) }, "br/min", Icons.Default.Timeline, RespirationTeal, { onOpenTab(VayuTab.VITALS) }, Modifier.weight(1f))
+        ReferenceMetricCard("SpO2", state.respiratory?.spo2Percentage?.let { "%.1f".format(it) }, "%", Icons.Default.Timeline, Spo2Blue, { onOpenTab(VayuTab.VITALS) }, Modifier.weight(1f))
+    }
+    Spacer(Modifier.height(14.dp))
+    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+        ReferenceMetricCard("Sleep", state.sleep?.actualSleepDurationMinutes?.let { "${it / 60}h ${it % 60}m" }, null, Icons.Default.Bedtime, SleepRem, { onOpenTab(VayuTab.SLEEP) }, Modifier.weight(1f))
+        ReferenceMetricCard("Heart rate", state.heartRate?.latestBpm?.toString(), "bpm", Icons.Default.Favorite, HeartCrimson, { onOpenTab(VayuTab.VITALS) }, Modifier.weight(1f))
+    }
+}
+
+@Composable
+private fun SectionHeading(title: String, action: String, onClick: () -> Unit = {}) {
+    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
+        Text(title, fontSize = 19.sp, fontWeight = FontWeight.Bold, color = TextPrimary)
+        Text(action, fontSize = 12.sp, fontWeight = FontWeight.Medium, color = TextMuted, modifier = Modifier.clickable(onClick = onClick).padding(4.dp))
+    }
+}
+
+@Composable
+private fun ActivitySummaryCard(steps: Long?, energy: Double?, distanceMeters: Double?, onClick: () -> Unit) {
+    val shape = RoundedCornerShape(25.dp)
     Column(
-        modifier = modifier
-            .height(164.dp)
-            .clip(shape)
-            .background(Brush.verticalGradient(listOf(CardBackgroundGlass.copy(alpha = 0.95f), Color(0xFF0B0E15))))
-            .border(1.dp, Brush.linearGradient(listOf(accent.copy(alpha = 0.52f), GlassBorder)), shape)
-            .clickable(onClick = onClick)
-            .padding(15.dp)
+        modifier = Modifier.fillMaxWidth().clip(shape).background(Color(0xFF0C0E13)).border(1.dp, Color(0x25FFFFFF), shape).clickable(onClick = onClick).padding(18.dp)
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Icon(icon, contentDescription = title, tint = accent, modifier = Modifier.size(18.dp))
-            Spacer(Modifier.width(7.dp))
-            Text(title.uppercase(), fontSize = 10.sp, fontWeight = FontWeight.Bold, color = TextMuted, letterSpacing = 0.55.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Box(Modifier.size(40.dp).clip(RoundedCornerShape(13.dp)).background(VayuCyan.copy(alpha = 0.13f)), contentAlignment = Alignment.Center) {
+                Icon(Icons.AutoMirrored.Filled.DirectionsWalk, null, tint = VayuCyan, modifier = Modifier.size(22.dp))
+            }
+            Spacer(Modifier.width(12.dp))
+            Column {
+                Text("TODAY'S MOVEMENT", fontSize = 11.sp, fontWeight = FontWeight.Bold, letterSpacing = 0.7.sp, color = TextSecondary)
+                Text("Original Health Connect totals", fontSize = 11.sp, color = TextMuted)
+            }
         }
         Spacer(Modifier.height(18.dp))
-        if (value == null) {
-            Text("—", fontSize = 34.sp, fontWeight = FontWeight.SemiBold, color = TextUnavailable)
-        } else {
-            Row(verticalAlignment = Alignment.Bottom) {
-                Text(value, fontSize = 27.sp, fontWeight = FontWeight.ExtraBold, color = TextPrimary, letterSpacing = (-0.8).sp, maxLines = 1)
-                if (unit != null) {
-                    Spacer(Modifier.width(4.dp))
-                    Text(unit, fontSize = 11.sp, fontWeight = FontWeight.Bold, color = TextMuted, modifier = Modifier.padding(bottom = 5.dp))
-                }
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+            ActivityValue("STEPS", steps?.let { "%,d".format(it) } ?: "—", VayuCyan)
+            ActivityValue("ENERGY", energy?.let { "%.0f kcal".format(it) } ?: "—", EnergyAmber)
+            ActivityValue("DISTANCE", distanceMeters?.let { "%.2f km".format(it / 1000) } ?: "—", TextPrimary)
+        }
+    }
+}
+
+@Composable
+private fun ActivityValue(label: String, value: String, accent: Color) {
+    Column {
+        Text(label, fontSize = 9.sp, fontWeight = FontWeight.Bold, letterSpacing = 0.7.sp, color = TextMuted)
+        Spacer(Modifier.height(5.dp))
+        Text(value, fontSize = 16.sp, fontWeight = FontWeight.Bold, color = accent, maxLines = 1)
+    }
+}
+
+@Composable
+private fun ReferenceMetricCard(title: String, value: String?, unit: String?, icon: ImageVector, accent: Color, onClick: () -> Unit, modifier: Modifier) {
+    val shape = RoundedCornerShape(24.dp)
+    Column(
+        modifier = modifier.height(150.dp).clip(shape).background(Color(0xFF0B0D12)).border(1.dp, Color(0x22FFFFFF), shape).clickable(onClick = onClick).padding(15.dp)
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Icon(icon, title, tint = accent, modifier = Modifier.size(15.dp))
+            Spacer(Modifier.width(6.dp))
+            Text(title.uppercase(), fontSize = 10.sp, fontWeight = FontWeight.Bold, letterSpacing = 0.55.sp, color = TextSecondary, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        }
+        Spacer(Modifier.height(17.dp))
+        Row(verticalAlignment = Alignment.Bottom) {
+            Text(value ?: "—", fontSize = if (value == null) 34.sp else 29.sp, fontWeight = FontWeight.Medium, color = if (value == null) TextUnavailable else TextPrimary, maxLines = 1)
+            if (value != null && unit != null) {
+                Spacer(Modifier.width(4.dp))
+                Text(unit, fontSize = 11.sp, fontWeight = FontWeight.Medium, color = TextMuted, modifier = Modifier.padding(bottom = 5.dp))
             }
         }
         Spacer(Modifier.weight(1f))
-        Text(subtitle, fontSize = 10.sp, color = TextMuted, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        Text(if (value == null) "No record today" else "Tap to explore", fontSize = 10.sp, color = if (value == null) TextMuted else accent)
     }
 }
