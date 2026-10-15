@@ -15,11 +15,11 @@ val VayuCyan = Color(0xFF00F2FE)
 val VayuBlue = Color(0xFF4FACFE)
 val VayuGlow = Color(0x4000F2FE)
 
-// Text Hierarchy
+// Text Hierarchy (High-contrast liquid glass readability)
 val TextPrimary = Color(0xFFFFFFFF)
-val TextSecondary = Color(0xFF9AA7BC)
-val TextMuted = Color(0xFF58657A)
-val TextUnavailable = Color(0xFF6B7280)
+val TextSecondary = Color(0xFFCBD5E1)
+val TextMuted = Color(0xFF94A3B8)
+val TextUnavailable = Color(0xFFA0AEC0)
 
 // Vital Color Accents (Inspired by Baro & Bevel)
 val HeartCrimson = Color(0xFFFF3366)

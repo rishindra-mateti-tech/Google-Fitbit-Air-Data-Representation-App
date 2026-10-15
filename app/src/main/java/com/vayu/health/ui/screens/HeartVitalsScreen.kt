@@ -19,6 +19,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.vayu.health.data.model.HealthDashboardState
+import com.vayu.health.data.model.ProvenanceFormatter
 import com.vayu.health.ui.components.GlassCard
 import com.vayu.health.ui.components.GlassPill
 import com.vayu.health.ui.components.MetricTile
@@ -52,11 +53,7 @@ fun HeartVitalsScreen(
                 fontWeight = FontWeight.Bold,
                 color = TextPrimary
             )
-            val pillText = if (state.selectedSource != null) {
-                if (state.selectedSource.contains("fitbit", ignoreCase = true)) "Fitbit" else state.selectedSource
-            } else {
-                "All Sources"
-            }
+            val pillText = ProvenanceFormatter.formatCompact(state.selectedSource)
             GlassPill(
                 text = pillText,
                 dotColor = if (state.selectedSource != null) VayuCyan else HeartCrimson
@@ -171,35 +168,30 @@ fun HeartVitalsScreen(
 
         Spacer(modifier = Modifier.height(14.dp))
 
-        // Respiration & Oxygen
+        // Respiration & Oxygen (Full-width cards for clean readability without wrapping)
         val resp = state.respiratory
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(12.dp)
-        ) {
-            val respRate = resp?.breathsPerMinute
-            MetricTile(
-                title = "Respiratory Rate",
-                value = respRate?.let { "%.1f".format(it) },
-                unit = if (respRate != null) "brpm" else null,
-                icon = Icons.Default.Air,
-                accentColor = RespirationTeal,
-                timestamp = resp?.respiratoryTimestamp?.let { "Recorded at ${viewModel.formatTime(it)}" },
-                source = resp?.respiratorySourcePackage ?: "Health Connect",
-                modifier = Modifier.weight(1f)
-            )
+        val respRate = resp?.breathsPerMinute
+        MetricTile(
+            title = "Respiratory Rate",
+            value = respRate?.let { "%.1f".format(it) },
+            unit = if (respRate != null) "brpm" else null,
+            icon = Icons.Default.Air,
+            accentColor = RespirationTeal,
+            timestamp = resp?.respiratoryTimestamp?.let { "Recorded at ${viewModel.formatTime(it)}" },
+            source = resp?.respiratorySourcePackage ?: (state.selectedSource ?: "Health Connect")
+        )
 
-            val spo2 = resp?.spo2Percentage
-            MetricTile(
-                title = "Blood Oxygen",
-                value = spo2?.let { "%.1f%%".format(it) },
-                icon = Icons.Default.Thermostat,
-                accentColor = Spo2Blue,
-                timestamp = resp?.spo2Timestamp?.let { "Recorded at ${viewModel.formatTime(it)}" },
-                source = resp?.spo2SourcePackage ?: "Health Connect",
-                modifier = Modifier.weight(1f)
-            )
-        }
+        Spacer(modifier = Modifier.height(14.dp))
+
+        val spo2 = resp?.spo2Percentage
+        MetricTile(
+            title = "Blood Oxygen (SpO₂)",
+            value = spo2?.let { "%.1f%%".format(it) },
+            icon = Icons.Default.Thermostat,
+            accentColor = Spo2Blue,
+            timestamp = resp?.spo2Timestamp?.let { "Recorded at ${viewModel.formatTime(it)}" },
+            source = resp?.spo2SourcePackage ?: (state.selectedSource ?: "Health Connect")
+        )
 
         Spacer(modifier = Modifier.height(14.dp))
 

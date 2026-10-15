@@ -19,6 +19,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.vayu.health.data.model.HealthDashboardState
+import com.vayu.health.data.model.ProvenanceFormatter
 import com.vayu.health.data.model.SleepStageType
 import com.vayu.health.ui.components.GlassCard
 import com.vayu.health.ui.components.GlassPill
@@ -55,8 +56,9 @@ fun SleepScreen(
                 fontWeight = FontWeight.Bold,
                 color = TextPrimary
             )
+            val pillText = ProvenanceFormatter.formatCompact(sleep?.sourcePackage ?: state.selectedSource)
             GlassPill(
-                text = sleep?.sourcePackage ?: "Health Connect",
+                text = pillText,
                 dotColor = SleepRem
             )
         }
@@ -66,14 +68,15 @@ fun SleepScreen(
         // Actual Sleep Duration Tile
         val actualSleepStr = sleep?.actualSleepDurationMinutes?.let { viewModel.formatDuration(it) }
         val sessionElapsedStr = sleep?.sessionElapsedMinutes?.let { viewModel.formatDuration(it) }
+        val sourcesLabel = ProvenanceFormatter.formatCompact(sleep?.sourcePackage ?: state.selectedSource)
 
         MetricTile(
             title = "Actual Sleep Duration",
             value = actualSleepStr,
             icon = Icons.Default.Bedtime,
             accentColor = SleepRem,
-            timestamp = sleep?.let { "Recorded by ${it.sourcePackage}" },
-            source = sleep?.sourcePackage ?: (state.selectedSource ?: "Health Connect")
+            timestamp = sleep?.let { "Recorded by $sourcesLabel" },
+            source = sourcesLabel
         )
 
         Spacer(modifier = Modifier.height(14.dp))

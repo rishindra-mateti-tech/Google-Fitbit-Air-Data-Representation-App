@@ -18,6 +18,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.vayu.health.data.model.HealthDashboardState
+import com.vayu.health.data.model.ProvenanceFormatter
 import com.vayu.health.ui.components.GlassCard
 import com.vayu.health.ui.components.GlassPill
 import com.vayu.health.ui.components.MetricTile
@@ -50,11 +51,7 @@ fun ActivityScreen(
                 fontWeight = FontWeight.Bold,
                 color = TextPrimary
             )
-            val pillText = if (state.selectedSource != null) {
-                if (state.selectedSource.contains("fitbit", ignoreCase = true)) "Fitbit" else state.selectedSource
-            } else {
-                if (activity?.sources?.isNotEmpty() == true) "Aggregated (${activity.sources.size})" else "Health Connect"
-            }
+            val pillText = ProvenanceFormatter.formatCompact(state.selectedSource)
             GlassPill(
                 text = pillText,
                 dotColor = if (state.selectedSource != null) VayuCyan else EnergyAmber
@@ -71,11 +68,7 @@ fun ActivityScreen(
         } else {
             activity?.lastUpdated?.let { "Aggregated as of ${viewModel.formatTime(it)}" } ?: "Health Connect aggregated total"
         }
-        val sourcesLabel = state.selectedSource ?: (if (activity != null && activity.sources.isNotEmpty()) {
-            if (activity.sources.size == 1) activity.sources.first() else "Health Connect (mixed: ${activity.sources.joinToString(", ")})"
-        } else {
-            "Health Connect"
-        })
+        val sourcesLabel = ProvenanceFormatter.formatCompact(state.selectedSource)
 
         MetricTile(
             title = "Total Steps",
@@ -89,33 +82,31 @@ fun ActivityScreen(
 
         Spacer(modifier = Modifier.height(14.dp))
 
-        // Calories Pair: Active vs Total
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(12.dp)
-        ) {
-            val activeCalStr = activity?.activeCaloriesKcal?.let { "%.0f".format(it) }
-            MetricTile(
-                title = "Active Energy",
-                value = activeCalStr,
-                unit = if (activeCalStr != null) "kcal" else null,
-                icon = Icons.Default.LocalFireDepartment,
-                accentColor = EnergyAmber,
-                source = sourcesLabel,
-                modifier = Modifier.weight(1f)
-            )
+        // Total Energy Tile (Authentic Fitbit aggregate: e.g. 1790 kcal)
+        val totalCalStr = activity?.totalCaloriesKcal?.let { "%.0f".format(it) }
+        MetricTile(
+            title = "Total Energy",
+            value = totalCalStr,
+            unit = if (totalCalStr != null) "kcal" else null,
+            icon = Icons.Default.LocalFireDepartment,
+            accentColor = EnergyAmber,
+            timestamp = if (totalCalStr != null) "Fitbit daily energy burn" else null,
+            source = sourcesLabel
+        )
 
-            val totalCalStr = activity?.totalCaloriesKcal?.let { "%.0f".format(it) }
-            MetricTile(
-                title = "Total Energy",
-                value = totalCalStr,
-                unit = if (totalCalStr != null) "kcal" else null,
-                icon = Icons.Default.LocalFireDepartment,
-                accentColor = VayuBlue,
-                source = sourcesLabel,
-                modifier = Modifier.weight(1f)
-            )
-        }
+        Spacer(modifier = Modifier.height(14.dp))
+
+        // Active Energy Tile
+        val activeCalStr = activity?.activeCaloriesKcal?.let { "%.0f".format(it) }
+        MetricTile(
+            title = "Active Energy",
+            value = activeCalStr,
+            unit = if (activeCalStr != null) "kcal" else null,
+            icon = Icons.Default.LocalFireDepartment,
+            accentColor = VayuBlue,
+            timestamp = if (activeCalStr != null) "Fitbit active workout burn" else null,
+            source = sourcesLabel
+        )
 
         Spacer(modifier = Modifier.height(14.dp))
 

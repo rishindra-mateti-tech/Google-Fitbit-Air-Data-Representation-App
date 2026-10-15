@@ -14,8 +14,10 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.vayu.health.data.model.ProvenanceFormatter
 import com.vayu.health.ui.theme.*
 
 @Composable
@@ -131,14 +133,18 @@ fun MetricTile(
                 Column {
                     Text(
                         text = "Data unavailable",
-                        fontSize = 20.sp,
+                        fontSize = 18.sp,
                         fontWeight = FontWeight.SemiBold,
-                        color = TextUnavailable
+                        color = TextUnavailable,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
                     )
                     Text(
                         text = "Not reported to Health Connect",
                         fontSize = 12.sp,
                         color = TextMuted,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis,
                         modifier = Modifier.padding(top = 2.dp)
                     )
                 }
@@ -146,23 +152,37 @@ fun MetricTile(
 
             Spacer(modifier = Modifier.height(12.dp))
 
-            // Footer: Timestamp & Source Transparency
+            // Footer: Timestamp & Clean Provenance Label (Never wraps character-by-character)
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
                 Text(
-                    text = if (value != null && timestamp != null) timestamp else "Original Health Record",
+                    text = if (value != null && timestamp != null) timestamp else "Original Record",
                     fontSize = 11.sp,
-                    color = TextMuted
+                    color = TextMuted,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f, fill = false)
                 )
-                Text(
-                    text = source,
-                    fontSize = 11.sp,
-                    fontWeight = FontWeight.Medium,
-                    color = TextSecondary
-                )
+                Spacer(modifier = Modifier.width(6.dp))
+                val friendlySource = ProvenanceFormatter.formatCompact(source)
+                Box(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(6.dp))
+                        .background(Color(0x18FFFFFF))
+                        .padding(horizontal = 6.dp, vertical = 2.dp)
+                ) {
+                    Text(
+                        text = friendlySource,
+                        fontSize = 10.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        color = TextSecondary,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
             }
         }
     }

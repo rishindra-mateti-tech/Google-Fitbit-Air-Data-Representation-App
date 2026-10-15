@@ -33,10 +33,12 @@ import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.vayu.health.R
 import com.vayu.health.data.model.HealthDashboardState
+import com.vayu.health.data.model.ProvenanceFormatter
 import com.vayu.health.ui.components.*
 import com.vayu.health.ui.theme.*
 import com.vayu.health.ui.viewmodel.HealthDashboardViewModel
@@ -138,35 +140,22 @@ fun DashboardScreen(
                     painter = painterResource(id = R.drawable.ic_vayu_logo),
                     contentDescription = "Vayu Logo",
                     modifier = Modifier
-                        .size(40.dp)
+                        .size(38.dp)
                         .clip(RoundedCornerShape(10.dp))
                 )
-                Spacer(modifier = Modifier.width(12.dp))
-                Column {
-                    Text(
-                        text = viewModel.getFormattedDate(),
-                        fontSize = 11.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = TextMuted,
-                        letterSpacing = 1.sp
-                    )
-                    Text(
-                        text = "Today",
-                        fontSize = 26.sp,
-                        fontWeight = FontWeight.ExtraBold,
-                        color = TextPrimary,
-                        letterSpacing = (-0.5).sp
-                    )
-                }
+                Spacer(modifier = Modifier.width(10.dp))
+                Text(
+                    text = "Today",
+                    fontSize = 26.sp,
+                    fontWeight = FontWeight.ExtraBold,
+                    color = TextPrimary,
+                    letterSpacing = (-0.5).sp
+                )
             }
 
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 // Source Selector Pill
-                val sourceLabel = if (state.selectedSource != null) {
-                    if (state.selectedSource.contains("fitbit", ignoreCase = true)) "Fitbit" else state.selectedSource
-                } else {
-                    "All Sources"
-                }
+                val sourceLabel = ProvenanceFormatter.formatCompact(state.selectedSource)
 
                 Box(
                     modifier = Modifier
@@ -522,6 +511,7 @@ fun SourceSelectionDialog(
     onDismiss: () -> Unit
 ) {
     var selectedPackage by remember { mutableStateOf(currentSelected) }
+    var showAdvancedSystemSources by remember { mutableStateOf(false) }
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -550,7 +540,7 @@ fun SourceSelectionDialog(
                 verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
                 Text(
-                    text = "Vayu is designed to display only authentic records written by your wearable. Select which Health Connect DataOrigin package Vayu should display:",
+                    text = "Vayu displays only authentic records from Google Health Connect. Select which DataOrigin source to visualize:",
                     fontSize = 12.sp,
                     color = TextSecondary,
                     lineHeight = 16.sp
@@ -559,7 +549,7 @@ fun SourceSelectionDialog(
                 Spacer(modifier = Modifier.height(4.dp))
 
                 Text(
-                    text = "FITBIT SOURCES (RECOMMENDED)",
+                    text = "FITBIT WEARABLE (RECOMMENDED)",
                     fontSize = 10.sp,
                     fontWeight = FontWeight.Bold,
                     color = VayuCyan,
@@ -591,7 +581,7 @@ fun SourceSelectionDialog(
                         Column(modifier = Modifier.weight(1f)) {
                             Row(verticalAlignment = Alignment.CenterVertically) {
                                 Text(
-                                    text = if (pkg == "com.fitbit.FitbitMobile") "Fitbit Mobile" else pkg,
+                                    text = ProvenanceFormatter.formatDisplayName(pkg),
                                     fontSize = 13.sp,
                                     fontWeight = FontWeight.Bold,
                                     color = TextPrimary
@@ -620,18 +610,21 @@ fun SourceSelectionDialog(
                     }
                 }
 
-                val otherSources = state.detectedSources.filter { !it.contains("fitbit", ignoreCase = true) }
-                if (otherSources.isNotEmpty()) {
+                // Regular detected non-Fitbit apps (excluding system hashes)
+                val regularOtherSources = state.detectedSources.filter {
+                    !it.contains("fitbit", ignoreCase = true) && !ProvenanceFormatter.isInternalSystemPackage(it)
+                }
+                if (regularOtherSources.isNotEmpty()) {
                     Spacer(modifier = Modifier.height(6.dp))
                     Text(
-                        text = "OTHER DETECTED PACKAGES",
+                        text = "OTHER DETECTED APPS",
                         fontSize = 10.sp,
                         fontWeight = FontWeight.Bold,
                         color = TextMuted,
                         letterSpacing = 0.5.sp
                     )
 
-                    otherSources.forEach { pkg ->
+                    regularOtherSources.forEach { pkg ->
                         val isSelected = selectedPackage == pkg
                         Row(
                             modifier = Modifier
@@ -639,8 +632,8 @@ fun SourceSelectionDialog(
                                 .clip(RoundedCornerShape(12.dp))
                                 .background(if (isSelected) Color(0x2000F2FE) else Color(0x0CFFFFFF))
                                 .border(1.dp, if (isSelected) VayuCyan else Color(0x10FFFFFF), RoundedCornerShape(12.dp))
-                                .clickable { selectedPackage = pkg }
-                                .padding(12.dp),
+                            .clickable { selectedPackage = pkg }
+                            .padding(12.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             RadioButton(
@@ -650,7 +643,85 @@ fun SourceSelectionDialog(
                             )
                             Spacer(modifier = Modifier.width(8.dp))
                             Column(modifier = Modifier.weight(1f)) {
-                                Text(text = pkg, fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = TextPrimary)
+                                Text(
+                                    text = ProvenanceFormatter.formatDisplayName(pkg),
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = TextPrimary
+                                )
+                                Text(
+                                    text = pkg,
+                                    fontSize = 10.sp,
+                                    color = TextMuted
+                                )
+                            }
+                        }
+                    }
+                }
+
+                // Internal system packages hidden behind an expandable debug toggle
+                val systemInternalSources = state.detectedSources.filter {
+                    ProvenanceFormatter.isInternalSystemPackage(it)
+                }
+                if (systemInternalSources.isNotEmpty()) {
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(8.dp))
+                            .clickable { showAdvancedSystemSources = !showAdvancedSystemSources }
+                            .padding(vertical = 6.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            imageVector = if (showAdvancedSystemSources) Icons.Default.ArrowUpward else Icons.Default.ArrowDownward,
+                            contentDescription = null,
+                            tint = TextMuted,
+                            modifier = Modifier.size(14.dp)
+                        )
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text(
+                            text = if (showAdvancedSystemSources) "Hide System Providers" else "Advanced: Show System Providers (${systemInternalSources.size})",
+                            fontSize = 11.sp,
+                            color = TextMuted,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                    }
+
+                    if (showAdvancedSystemSources) {
+                        systemInternalSources.forEach { pkg ->
+                            val isSelected = selectedPackage == pkg
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clip(RoundedCornerShape(10.dp))
+                                    .background(if (isSelected) Color(0x2000F2FE) else Color(0x08FFFFFF))
+                                    .border(1.dp, if (isSelected) VayuCyan else Color(0x0EFFFFFF), RoundedCornerShape(10.dp))
+                                    .clickable { selectedPackage = pkg }
+                                    .padding(10.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                RadioButton(
+                                    selected = isSelected,
+                                    onClick = { selectedPackage = pkg },
+                                    colors = RadioButtonDefaults.colors(selectedColor = VayuCyan, unselectedColor = TextMuted)
+                                )
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(
+                                        text = "Internal Provider",
+                                        fontSize = 11.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = TextSecondary
+                                    )
+                                    Text(
+                                        text = pkg,
+                                        fontSize = 9.sp,
+                                        color = TextMuted,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                }
                             }
                         }
                     }
@@ -685,7 +756,7 @@ fun SourceSelectionDialog(
                     Column(modifier = Modifier.weight(1f)) {
                         Text(text = "All Health Connect Sources", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = TextPrimary)
                         Text(
-                            text = "Warning: Aggregates records across all installed health apps. Not restricted to Fitbit.",
+                            text = "Aggregates records across all installed health apps. Not restricted to Fitbit.",
                             fontSize = 10.sp,
                             color = EnergyAmber,
                             lineHeight = 14.sp
@@ -697,10 +768,18 @@ fun SourceSelectionDialog(
         confirmButton = {
             Button(
                 onClick = { onSelectSource(selectedPackage) },
-                colors = ButtonDefaults.buttonColors(containerColor = VayuCyan, contentColor = SpaceBlack),
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = VayuCyan,
+                    contentColor = SpaceBlack
+                ),
                 shape = RoundedCornerShape(12.dp)
             ) {
-                Text("Confirm Selection", fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                Text(
+                    text = "Confirm Selection",
+                    color = SpaceBlack,
+                    fontWeight = FontWeight.ExtraBold,
+                    fontSize = 13.sp
+                )
             }
         },
         dismissButton = {
@@ -810,11 +889,19 @@ fun SleepSessionCard(state: HealthDashboardState, viewModel: HealthDashboardView
                     color = TextMuted,
                     letterSpacing = 1.sp
                 )
-                Text(
-                    text = sleep?.sourcePackage ?: (state.selectedSource ?: "Health Connect"),
-                    fontSize = 10.sp,
-                    color = TextMuted
-                )
+                Box(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(Color(0x14FFFFFF))
+                        .padding(horizontal = 8.dp, vertical = 3.dp)
+                ) {
+                    Text(
+                        text = ProvenanceFormatter.formatCompact(sleep?.sourcePackage ?: state.selectedSource),
+                        fontSize = 10.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        color = VayuCyan
+                    )
+                }
             }
 
             Spacer(modifier = Modifier.height(10.dp))
@@ -883,10 +970,11 @@ fun SleepSessionCard(state: HealthDashboardState, viewModel: HealthDashboardView
                             color = TextSecondary
                         )
                         Text(
-                            text = sleep.sourcePackage,
+                            text = ProvenanceFormatter.formatDisplayName(sleep.sourcePackage),
                             fontSize = 10.sp,
                             color = TextMuted,
-                            maxLines = 1
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
                         )
                     }
                 }
@@ -903,7 +991,7 @@ fun SleepSessionCard(state: HealthDashboardState, viewModel: HealthDashboardView
                     color = TextUnavailable
                 )
                 Text(
-                    text = "No sleep session recorded by ${state.selectedSource ?: "Health Connect"} today",
+                    text = ProvenanceFormatter.formatEmptyState(state.selectedSource, "sleep sessions"),
                     fontSize = 11.sp,
                     color = TextMuted,
                     modifier = Modifier.padding(top = 2.dp)
@@ -913,7 +1001,7 @@ fun SleepSessionCard(state: HealthDashboardState, viewModel: HealthDashboardView
     }
 }
 
-// CARD 2: Daily Activity (De-duplicated Health Connect Aggregates)
+// CARD 2: Daily Activity (Spacious 2x2 Metric Grid with Aggregates)
 @Composable
 fun DailyActivityCard(state: HealthDashboardState) {
     val activity = state.activity
@@ -931,95 +1019,187 @@ fun DailyActivityCard(state: HealthDashboardState) {
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Text(
-                    text = if (isFiltered) "FITBIT HEALTH CONNECT TOTAL FOR TODAY" else "HEALTH CONNECT AGGREGATED TOTAL",
+                    text = "ACTIVITY & ENERGY",
                     fontSize = 11.sp,
                     fontWeight = FontWeight.Bold,
                     color = TextMuted,
-                    letterSpacing = 0.5.sp
+                    letterSpacing = 1.sp
                 )
-                val sourcesLabel = state.selectedSource ?: (if (activity?.sources?.isNotEmpty() == true) {
-                    if (activity.sources.size == 1) activity.sources.first() else "Mixed (${activity.sources.size} sources)"
-                } else {
-                    "Health Connect"
-                })
-                Text(
-                    text = sourcesLabel,
-                    fontSize = 10.sp,
-                    color = TextMuted
-                )
+                Box(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(Color(0x14FFFFFF))
+                        .padding(horizontal = 8.dp, vertical = 3.dp)
+                ) {
+                    Text(
+                        text = ProvenanceFormatter.formatCompact(state.selectedSource ?: activity?.sources?.firstOrNull()),
+                        fontSize = 10.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        color = VayuCyan
+                    )
+                }
             }
 
             Spacer(modifier = Modifier.height(10.dp))
 
             if (activity != null) {
                 val steps = activity.steps
+                val totalCal = activity.totalCaloriesKcal
+                val activeCal = activity.activeCaloriesKcal
+                val distanceMeters = activity.distanceMeters
 
-                Row(
+                Column(
                     modifier = Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(14.dp)
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
-                    // Steps Hero Box (No fabricated 10k target percentage ring)
-                    Column(
-                        modifier = Modifier
-                            .weight(1f)
-                            .clip(RoundedCornerShape(16.dp))
-                            .background(Color(0x1400F2FE))
-                            .border(1.dp, VayuCyan.copy(alpha = 0.3f), RoundedCornerShape(16.dp))
-                            .padding(vertical = 12.dp, horizontal = 12.dp),
-                        horizontalAlignment = Alignment.Start
+                    // Row 1: Steps & Total Energy
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(10.dp)
                     ) {
-                        Text("STEPS", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = VayuCyan, letterSpacing = 1.sp)
-                        Spacer(modifier = Modifier.height(4.dp))
-                        Text(
-                            text = steps?.let { "%,d".format(it) } ?: "Data unavailable",
-                            fontSize = 22.sp,
-                            fontWeight = FontWeight.ExtraBold,
-                            color = if (steps != null) TextPrimary else TextUnavailable
-                        )
-                        Text(
-                            text = if (steps != null) "Fitbit recorded count" else "No steps today",
-                            fontSize = 10.sp,
-                            color = TextMuted
-                        )
+                        // Steps Tile
+                        Column(
+                            modifier = Modifier
+                                .weight(1f)
+                                .clip(RoundedCornerShape(12.dp))
+                                .background(Color(0x0CFFFFFF))
+                                .border(0.5.dp, Color(0x18FFFFFF), RoundedCornerShape(12.dp))
+                                .padding(12.dp)
+                        ) {
+                            Text(
+                                text = "STEPS",
+                                fontSize = 10.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = VayuCyan,
+                                letterSpacing = 0.5.sp
+                            )
+                            Spacer(modifier = Modifier.height(4.dp))
+                            Text(
+                                text = steps?.let { "%,d".format(it) } ?: "Data unavailable",
+                                fontSize = 18.sp,
+                                fontWeight = FontWeight.ExtraBold,
+                                color = if (steps != null) TextPrimary else TextUnavailable,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                            Spacer(modifier = Modifier.height(2.dp))
+                            Text(
+                                text = if (steps != null) "Fitbit count" else "No steps today",
+                                fontSize = 10.sp,
+                                color = TextMuted,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        }
+
+                        // Total Energy Tile
+                        Column(
+                            modifier = Modifier
+                                .weight(1f)
+                                .clip(RoundedCornerShape(12.dp))
+                                .background(Color(0x0CFFFFFF))
+                                .border(0.5.dp, Color(0x18FFFFFF), RoundedCornerShape(12.dp))
+                                .padding(12.dp)
+                        ) {
+                            Text(
+                                text = "TOTAL ENERGY",
+                                fontSize = 10.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = EnergyAmber,
+                                letterSpacing = 0.5.sp
+                            )
+                            Spacer(modifier = Modifier.height(4.dp))
+                            Text(
+                                text = totalCal?.let { "%,.0f kcal".format(it) } ?: "Data unavailable",
+                                fontSize = 18.sp,
+                                fontWeight = FontWeight.ExtraBold,
+                                color = if (totalCal != null) TextPrimary else TextUnavailable,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                            Spacer(modifier = Modifier.height(2.dp))
+                            Text(
+                                text = if (totalCal != null) "Health Connect aggregate" else "No burn record",
+                                fontSize = 10.sp,
+                                color = TextMuted,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        }
                     }
 
-                    // Distance, Active & Total Energy Column
-                    Column(modifier = Modifier.weight(1.2f), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween
+                    // Row 2: Active Energy & Distance
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        // Active Energy Tile
+                        Column(
+                            modifier = Modifier
+                                .weight(1f)
+                                .clip(RoundedCornerShape(12.dp))
+                                .background(Color(0x0CFFFFFF))
+                                .border(0.5.dp, Color(0x18FFFFFF), RoundedCornerShape(12.dp))
+                                .padding(12.dp)
                         ) {
-                            Text("Active Energy:", fontSize = 12.sp, color = TextSecondary)
                             Text(
-                                text = activity.activeCaloriesKcal?.let { "%.0f kcal".format(it) } ?: "Data unavailable",
-                                fontSize = 12.sp,
+                                text = "ACTIVE ENERGY",
+                                fontSize = 10.sp,
                                 fontWeight = FontWeight.Bold,
-                                color = if (activity.activeCaloriesKcal != null) EnergyAmber else TextMuted
+                                color = TextSecondary,
+                                letterSpacing = 0.5.sp
+                            )
+                            Spacer(modifier = Modifier.height(4.dp))
+                            Text(
+                                text = activeCal?.let { "%,.0f kcal".format(it) } ?: "Data unavailable",
+                                fontSize = 18.sp,
+                                fontWeight = FontWeight.ExtraBold,
+                                color = if (activeCal != null) TextPrimary else TextUnavailable,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                            Spacer(modifier = Modifier.height(2.dp))
+                            Text(
+                                text = if (activeCal != null) "Fitbit active burn" else "No active calories",
+                                fontSize = 10.sp,
+                                color = TextMuted,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
                             )
                         }
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween
+
+                        // Distance Tile
+                        Column(
+                            modifier = Modifier
+                                .weight(1f)
+                                .clip(RoundedCornerShape(12.dp))
+                                .background(Color(0x0CFFFFFF))
+                                .border(0.5.dp, Color(0x18FFFFFF), RoundedCornerShape(12.dp))
+                                .padding(12.dp)
                         ) {
-                            Text("Total Energy:", fontSize = 12.sp, color = TextSecondary)
                             Text(
-                                text = activity.totalCaloriesKcal?.let { "%.0f kcal".format(it) } ?: "Data unavailable",
-                                fontSize = 12.sp,
+                                text = "DISTANCE",
+                                fontSize = 10.sp,
                                 fontWeight = FontWeight.Bold,
-                                color = if (activity.totalCaloriesKcal != null) TextPrimary else TextMuted
+                                color = TextSecondary,
+                                letterSpacing = 0.5.sp
                             )
-                        }
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween
-                        ) {
-                            Text("Distance:", fontSize = 12.sp, color = TextSecondary)
+                            Spacer(modifier = Modifier.height(4.dp))
                             Text(
-                                text = activity.distanceMeters?.let { "%.2f km".format(it / 1000.0) } ?: "Data unavailable",
-                                fontSize = 12.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = if (activity.distanceMeters != null) TextPrimary else TextMuted
+                                text = distanceMeters?.let { "%.2f km".format(it / 1000.0) } ?: "Data unavailable",
+                                fontSize = 18.sp,
+                                fontWeight = FontWeight.ExtraBold,
+                                color = if (distanceMeters != null) TextPrimary else TextUnavailable,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                            Spacer(modifier = Modifier.height(2.dp))
+                            Text(
+                                text = if (distanceMeters != null) "Fitbit logged" else "No distance record",
+                                fontSize = 10.sp,
+                                color = TextMuted,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
                             )
                         }
                     }
@@ -1028,7 +1208,7 @@ fun DailyActivityCard(state: HealthDashboardState) {
                 if (!isFiltered && activity.sources.size > 1) {
                     Spacer(modifier = Modifier.height(8.dp))
                     Text(
-                        text = "Contributing sources: ${activity.sources.joinToString(", ")}",
+                        text = "Contributing sources: ${activity.sources.joinToString(", ") { ProvenanceFormatter.formatDisplayName(it) }}",
                         fontSize = 10.sp,
                         color = TextMuted
                     )
@@ -1041,7 +1221,7 @@ fun DailyActivityCard(state: HealthDashboardState) {
                     color = TextUnavailable
                 )
                 Text(
-                    text = "No activity records found from ${state.selectedSource ?: "Health Connect"} today",
+                    text = ProvenanceFormatter.formatEmptyState(state.selectedSource, "activity records"),
                     fontSize = 11.sp,
                     color = TextMuted,
                     modifier = Modifier.padding(top = 2.dp)
@@ -1067,32 +1247,35 @@ fun HeartRateCurveCard(state: HealthDashboardState, viewModel: HealthDashboardVi
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Column {
+                Text(
+                    text = "HEART RATE SAMPLES",
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = TextMuted,
+                    letterSpacing = 1.sp
+                )
+                Box(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(Color(0x14FFFFFF))
+                        .padding(horizontal = 8.dp, vertical = 3.dp)
+                ) {
+                    val hrSource = if ((hr?.sources?.size ?: 0) > 1) "Mixed" else (hr?.sourcePackage ?: state.selectedSource)
                     Text(
-                        text = "HEART RATE SAMPLES",
-                        fontSize = 11.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = TextMuted,
-                        letterSpacing = 1.sp
-                    )
-                    val hrSourceText = if ((hr?.sources?.size ?: 0) > 1) {
-                        "Health Connect (mixed: ${hr?.sources?.joinToString(", ")})"
-                    } else {
-                        hr?.sourcePackage ?: (state.selectedSource ?: "Health Connect")
-                    }
-                    Text(
-                        text = hrSourceText,
+                        text = ProvenanceFormatter.formatCompact(hrSource),
                         fontSize = 10.sp,
-                        color = TextMuted
+                        fontWeight = FontWeight.SemiBold,
+                        color = VayuCyan
                     )
                 }
+            }
 
-                if (hr?.latestBpm != null) {
-                    Row(verticalAlignment = Alignment.Bottom) {
-                        Text(text = "${hr.latestBpm}", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = HeartCrimson)
-                        Spacer(modifier = Modifier.width(3.dp))
-                        Text("bpm", fontSize = 11.sp, color = TextMuted)
-                    }
+            if (hr?.latestBpm != null) {
+                Spacer(modifier = Modifier.height(4.dp))
+                Row(verticalAlignment = Alignment.Bottom) {
+                    Text(text = "${hr.latestBpm}", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = HeartCrimson)
+                    Spacer(modifier = Modifier.width(3.dp))
+                    Text("bpm", fontSize = 11.sp, color = TextMuted)
                 }
             }
 
@@ -1149,7 +1332,7 @@ fun HeartRateCurveCard(state: HealthDashboardState, viewModel: HealthDashboardVi
                     color = TextUnavailable
                 )
                 Text(
-                    text = "No heart rate records from ${state.selectedSource ?: "Health Connect"} today",
+                    text = ProvenanceFormatter.formatEmptyState(state.selectedSource, "heart-rate samples"),
                     fontSize = 11.sp,
                     color = TextMuted,
                     modifier = Modifier.padding(top = 2.dp)
@@ -1184,10 +1367,24 @@ fun RestingHrAndHrvCard(state: HealthDashboardState) {
                         Spacer(modifier = Modifier.width(3.dp))
                         Text("bpm", fontSize = 11.sp, color = TextMuted)
                     }
-                    Text(rhr.sourcePackage, fontSize = 9.sp, color = TextMuted, maxLines = 1)
+                    Spacer(modifier = Modifier.height(2.dp))
+                    Text(
+                        text = ProvenanceFormatter.formatCompact(rhr.sourcePackage),
+                        fontSize = 10.sp,
+                        color = TextMuted,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
                 } else {
                     Text("Data unavailable", fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = TextUnavailable)
-                    Text("No record today", fontSize = 10.sp, color = TextMuted)
+                    Spacer(modifier = Modifier.height(2.dp))
+                    Text(
+                        text = ProvenanceFormatter.formatEmptyState(state.selectedSource, "RHR"),
+                        fontSize = 10.sp,
+                        color = TextMuted,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
                 }
             }
         }
@@ -1207,10 +1404,24 @@ fun RestingHrAndHrvCard(state: HealthDashboardState) {
                         Spacer(modifier = Modifier.width(3.dp))
                         Text("ms", fontSize = 11.sp, color = TextMuted)
                     }
-                    Text(hrv.sourcePackage, fontSize = 9.sp, color = TextMuted, maxLines = 1)
+                    Spacer(modifier = Modifier.height(2.dp))
+                    Text(
+                        text = ProvenanceFormatter.formatCompact(hrv.sourcePackage),
+                        fontSize = 10.sp,
+                        color = TextMuted,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
                 } else {
                     Text("Data unavailable", fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = TextUnavailable)
-                    Text("No record today", fontSize = 10.sp, color = TextMuted)
+                    Spacer(modifier = Modifier.height(2.dp))
+                    Text(
+                        text = ProvenanceFormatter.formatEmptyState(state.selectedSource, "HRV"),
+                        fontSize = 10.sp,
+                        color = TextMuted,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
                 }
             }
         }
@@ -1240,11 +1451,19 @@ fun SleepHistory7DaysCard(state: HealthDashboardState) {
                     color = TextMuted,
                     letterSpacing = 1.sp
                 )
-                Text(
-                    text = state.selectedSource ?: "Health Connect",
-                    fontSize = 10.sp,
-                    color = TextMuted
-                )
+                Box(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(Color(0x14FFFFFF))
+                        .padding(horizontal = 8.dp, vertical = 3.dp)
+                ) {
+                    Text(
+                        text = ProvenanceFormatter.formatCompact(state.selectedSource),
+                        fontSize = 10.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        color = VayuCyan
+                    )
+                }
             }
 
             Spacer(modifier = Modifier.height(10.dp))
@@ -1272,9 +1491,9 @@ fun SleepHistory7DaysCard(state: HealthDashboardState) {
                                     color = TextPrimary
                                 )
                                 val sessionCountLabel = if (summary.sessionCount > 1) {
-                                    "${summary.sessionCount} sessions • ${summary.sourcePackage}"
+                                    "${summary.sessionCount} sessions • ${ProvenanceFormatter.formatCompact(summary.sourcePackage)}"
                                 } else {
-                                    summary.sourcePackage
+                                    ProvenanceFormatter.formatCompact(summary.sourcePackage)
                                 }
                                 Text(
                                     text = sessionCountLabel,
@@ -1322,7 +1541,7 @@ fun SleepHistory7DaysCard(state: HealthDashboardState) {
                     color = TextUnavailable
                 )
                 Text(
-                    text = "No sleep sessions recorded by ${state.selectedSource ?: "Health Connect"} in the last 7 days",
+                    text = ProvenanceFormatter.formatEmptyState(state.selectedSource, "7-day sleep records"),
                     fontSize = 11.sp,
                     color = TextMuted,
                     modifier = Modifier.padding(top = 2.dp)
@@ -1358,10 +1577,24 @@ fun RespiratoryAndTempCard(state: HealthDashboardState) {
                         Spacer(modifier = Modifier.width(3.dp))
                         Text("%", fontSize = 11.sp, color = TextMuted)
                     }
-                    Text(resp.spo2SourcePackage ?: (state.selectedSource ?: "Health Connect"), fontSize = 9.sp, color = TextMuted, maxLines = 1)
+                    Spacer(modifier = Modifier.height(2.dp))
+                    Text(
+                        text = ProvenanceFormatter.formatCompact(resp.spo2SourcePackage ?: state.selectedSource),
+                        fontSize = 10.sp,
+                        color = TextMuted,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
                 } else {
                     Text("Data unavailable", fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = TextUnavailable)
-                    Text("No record today", fontSize = 10.sp, color = TextMuted)
+                    Spacer(modifier = Modifier.height(2.dp))
+                    Text(
+                        text = ProvenanceFormatter.formatEmptyState(state.selectedSource, "SpO₂"),
+                        fontSize = 10.sp,
+                        color = TextMuted,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
                 }
             }
         }
@@ -1383,11 +1616,25 @@ fun RespiratoryAndTempCard(state: HealthDashboardState) {
                         Spacer(modifier = Modifier.width(3.dp))
                         Text("°C", fontSize = 11.sp, color = TextMuted)
                     }
-                    Text(skinTemp.sourcePackage, fontSize = 9.sp, color = TextMuted, maxLines = 1)
+                    Spacer(modifier = Modifier.height(2.dp))
+                    Text(
+                        text = ProvenanceFormatter.formatCompact(skinTemp.sourcePackage),
+                        fontSize = 10.sp,
+                        color = TextMuted,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
                 } else {
                     Text("Data unavailable", fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = TextUnavailable)
-                    val caption = if (!state.isSkinTemperatureSupported) "Sensor unsupported" else "No record today"
-                    Text(caption, fontSize = 10.sp, color = TextMuted)
+                    Spacer(modifier = Modifier.height(2.dp))
+                    val caption = if (!state.isSkinTemperatureSupported) "Sensor unsupported" else ProvenanceFormatter.formatEmptyState(state.selectedSource, "skin temp")
+                    Text(
+                        text = caption,
+                        fontSize = 10.sp,
+                        color = TextMuted,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
                 }
             }
         }

@@ -92,7 +92,11 @@ class MainActivity : ComponentActivity() {
                                 )
                         )
 
-                        Column(modifier = Modifier.fillMaxSize()) {
+                        Column(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .statusBarsPadding()
+                        ) {
                             // Update Required Banner
                             if (uiState.sdkStatus == HealthConnectStatus.UPDATE_REQUIRED) {
                                 GlassCard(
@@ -242,7 +246,9 @@ class MainActivity : ComponentActivity() {
                             GlassTabBar(
                                 selectedTab = selectedTab,
                                 onTabSelected = { selectedTab = it },
-                                modifier = Modifier.fillMaxWidth()
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .navigationBarsPadding()
                             )
                         }
                     }
