@@ -7,6 +7,10 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.result.ActivityResultLauncher
 import androidx.activity.viewModels
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -213,13 +217,16 @@ class MainActivity : ComponentActivity() {
                             }
 
                             // Active Screen Content
-                            Box(
+                            AnimatedContent(
                                 modifier = Modifier
                                     .weight(1f)
-                                    .fillMaxWidth()
+                                    .fillMaxWidth(),
+                                targetState = selectedTab,
+                                transitionSpec = { fadeIn() togetherWith fadeOut() },
+                                label = "Vayu screen transition"
                             ) {
-                                when (selectedTab) {
-                                    VayuTab.OVERVIEW -> DashboardScreen(
+                                when (it) {
+                                    VayuTab.OVERVIEW -> BaroOverviewScreen(
                                         state = uiState,
                                         viewModel = viewModel,
                                         onOpenTab = { selectedTab = it }
