@@ -1,0 +1,5 @@
+<resources>
+    <string name="app_name">Vayu</string>
+    <string name="app_tagline">Inspired by Air</string>
+    <string name="health_permissions_rationale">Vayu needs read-only access to your Health Connect records to display your original Fitbit measurements without modifying or fabricating data.</string>
+</resources>

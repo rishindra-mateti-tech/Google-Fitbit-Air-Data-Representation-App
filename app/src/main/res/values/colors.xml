@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="vayu_background">#07090E</color>
+    <color name="vayu_surface">#0F141C</color>
+    <color name="vayu_primary">#00F2FE</color>
+    <color name="vayu_accent">#4FACFE</color>
+    <color name="vayu_text_primary">#FFFFFF</color>
+    <color name="vayu_text_secondary">#8E9BAE</color>
+</resources>
