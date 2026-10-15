@@ -26,7 +26,7 @@ fun MetricTile(
     icon: ImageVector,
     accentColor: Color,
     timestamp: String? = null,
-    source: String = "Fitbit Air",
+    source: String,
     modifier: Modifier = Modifier,
     statusText: String? = null
 ) {

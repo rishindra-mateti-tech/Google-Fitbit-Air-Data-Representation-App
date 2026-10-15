@@ -7,6 +7,8 @@ import org.junit.Test
 import java.time.Duration
 import java.time.Instant
 import java.time.LocalDate
+import java.time.ZoneId
+import java.time.temporal.ChronoUnit
 
 /**
  * Unit tests verifying:
@@ -290,5 +292,133 @@ class HealthDataMappingTest {
         // Activity should succeed despite sleep failure
         assertNotNull(state.activity)
         assertEquals(5000L, state.activity?.steps)
+    }
+
+    @Test
+    fun testHeartRateSamplePoint_provenanceAndLatestSource() {
+        val t1 = Instant.parse("2026-10-15T08:00:00Z")
+        val t2 = Instant.parse("2026-10-15T08:30:00Z")
+        val t3 = Instant.parse("2026-10-15T09:00:00Z")
+
+        val samples = listOf(
+            HeartRateSamplePoint(time = t1, beatsPerMinute = 62L, sourcePackage = "com.fitbit.FitbitMobile"),
+            HeartRateSamplePoint(time = t2, beatsPerMinute = 75L, sourcePackage = "com.samsung.health"),
+            HeartRateSamplePoint(time = t3, beatsPerMinute = 80L, sourcePackage = "com.fitbit.FitbitMobile")
+        )
+
+        val sources = samples.map { it.sourcePackage }.filter { it.isNotBlank() }.toSet()
+        val latestSample = samples.maxByOrNull { it.time }
+
+        val hrMetric = HeartRateMetric(
+            latestBpm = latestSample?.beatsPerMinute,
+            minBpm = 62L,
+            maxBpm = 80L,
+            averageBpm = 72L,
+            samples = samples,
+            timestamp = latestSample?.time,
+            sourcePackage = latestSample?.sourcePackage ?: "",
+            sources = sources
+        )
+
+        assertEquals(80L, hrMetric.latestBpm)
+        assertEquals("com.fitbit.FitbitMobile", hrMetric.sourcePackage)
+        assertEquals(2, hrMetric.sources.size)
+        assertTrue(hrMetric.sources.contains("com.fitbit.FitbitMobile"))
+        assertTrue(hrMetric.sources.contains("com.samsung.health"))
+        assertEquals("com.samsung.health", samples[1].sourcePackage)
+    }
+
+    @Test
+    fun testRespiratoryMetric_separateSourceAttribution() {
+        val respTime = Instant.parse("2026-10-15T06:00:00Z")
+        val spo2Time = Instant.parse("2026-10-15T05:30:00Z")
+
+        val metric = RespiratoryMetric(
+            breathsPerMinute = 14.5,
+            respiratoryTimestamp = respTime,
+            respiratorySourcePackage = "com.fitbit.FitbitMobile",
+            spo2Percentage = 97.5,
+            spo2Timestamp = spo2Time,
+            spo2SourcePackage = "com.google.android.apps.fitness",
+            skinTemperature = null,
+            timestamp = respTime,
+            contributingSources = setOf("com.fitbit.FitbitMobile", "com.google.android.apps.fitness")
+        )
+
+        assertEquals("com.fitbit.FitbitMobile", metric.respiratorySourcePackage)
+        assertEquals("com.google.android.apps.fitness", metric.spo2SourcePackage)
+        assertEquals(respTime, metric.respiratoryTimestamp)
+        assertEquals(spo2Time, metric.spo2Timestamp)
+        assertEquals(2, metric.contributingSources.size)
+        assertTrue(metric.contributingSources.contains("com.fitbit.FitbitMobile"))
+        assertTrue(metric.contributingSources.contains("com.google.android.apps.fitness"))
+    }
+
+    @Test
+    fun testDailySleepSummary_nullableActualSleepAndMultiSessionHandling() {
+        // Summary where stages exist
+        val summaryWithStages = DailySleepSummary(
+            date = LocalDate.parse("2026-10-14"),
+            actualSleepMinutes = 410L,
+            sessionElapsedMinutes = 480L,
+            sourcePackage = "com.fitbit.FitbitMobile",
+            sessionCount = 1,
+            contributingSources = setOf("com.fitbit.FitbitMobile")
+        )
+        assertEquals(410L, summaryWithStages.actualSleepMinutes)
+        assertEquals(480L, summaryWithStages.sessionElapsedMinutes)
+        assertEquals(1, summaryWithStages.sessionCount)
+
+        // Summary where stages are unavailable: actualSleepMinutes must be null
+        val summaryWithoutStages = DailySleepSummary(
+            date = LocalDate.parse("2026-10-13"),
+            actualSleepMinutes = null,
+            sessionElapsedMinutes = 390L,
+            sourcePackage = "com.google.android.apps.fitness",
+            sessionCount = 2,
+            contributingSources = setOf("com.google.android.apps.fitness", "com.fitbit.FitbitMobile")
+        )
+        assertNull(summaryWithoutStages.actualSleepMinutes)
+        assertEquals(390L, summaryWithoutStages.sessionElapsedMinutes)
+        assertEquals(2, summaryWithoutStages.sessionCount)
+        assertEquals(2, summaryWithoutStages.contributingSources.size)
+    }
+
+    @Test
+    fun testHealthDateRangeCalculator_timezoneAndWindowBoundaries() {
+        val fixedNow = Instant.parse("2026-10-15T15:30:00Z")
+        val fixedZone = ZoneId.of("UTC")
+
+        val calculator = HealthDateRangeCalculator(
+            clock = { fixedNow },
+            zoneId = { fixedZone }
+        )
+
+        val windows = calculator.calculateWindows()
+
+        assertEquals(fixedNow, windows.now)
+        // startOfToday in UTC should be 2026-10-15T00:00:00Z
+        assertEquals(Instant.parse("2026-10-15T00:00:00Z"), windows.startOfToday)
+        // sleepWindowStart is now minus 24h: 2026-10-14T15:30:00Z
+        assertEquals(Instant.parse("2026-10-14T15:30:00Z"), windows.sleepWindowStart)
+        // sleepHistoryStart is now minus 7 days: 2026-10-08T15:30:00Z
+        assertEquals(Instant.parse("2026-10-08T15:30:00Z"), windows.sleepHistoryStart)
+    }
+
+    @Test
+    fun testSanitizeErrorMessage_stripsHexMemoryAddressesAndHandlesBlank() {
+        val fakeManager = object : HealthConnectManager(null) {}
+        val repo = HealthMetricsRepository(fakeManager)
+
+        // Case 1: Exception with hex memory address
+        val exceptionWithHex = RuntimeException("Connection error at ObjectRef@7f3a9b2c in internal pipe")
+        val sanitized = repo.sanitizeErrorMessage("heart rate", exceptionWithHex)
+        assertEquals("Error reading heart rate: Connection error at ObjectRef in internal pipe", sanitized)
+        assertFalse(sanitized.contains("@7f3a9b2c"))
+
+        // Case 2: Exception with empty/blank message
+        val exceptionBlank = IllegalArgumentException("   ")
+        val sanitizedBlank = repo.sanitizeErrorMessage("sleep", exceptionBlank)
+        assertEquals("Error reading sleep: System read error", sanitizedBlank)
     }
 }

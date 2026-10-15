@@ -10,3 +10,6 @@ local.properties
 .cxx
 *.apk
 setup_android_sdk.ps1
+keystore.properties
+*.jks
+*.keystore

@@ -1,5 +1,6 @@
 package com.vayu.health.ui.screens
 
+import android.content.Context
 import androidx.compose.animation.*
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -13,6 +14,7 @@ import androidx.compose.material.icons.filled.ArrowDownward
 import androidx.compose.material.icons.filled.ArrowUpward
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -21,6 +23,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -47,18 +50,41 @@ fun DashboardScreen(
 ) {
     val scrollState = rememberScrollState()
     var isEditMode by remember { mutableStateOf(false) }
+    var showPrivacyDialog by remember { mutableStateOf(false) }
+
+    val context = LocalContext.current
+    val prefs = remember { context.getSharedPreferences("vayu_layout_prefs", Context.MODE_PRIVATE) }
+
+    val defaultOrder = remember {
+        listOf(
+            DashboardCardId.SLEEP_SESSION,
+            DashboardCardId.DAILY_ACTIVITY,
+            DashboardCardId.HEART_RATE_CURVE,
+            DashboardCardId.RESTING_HR_AND_HRV,
+            DashboardCardId.SLEEP_HISTORY_7_DAYS,
+            DashboardCardId.RESPIRATORY_AND_TEMP
+        )
+    }
 
     var cardOrder by remember {
-        mutableStateOf(
-            listOf(
-                DashboardCardId.SLEEP_SESSION,
-                DashboardCardId.DAILY_ACTIVITY,
-                DashboardCardId.HEART_RATE_CURVE,
-                DashboardCardId.RESTING_HR_AND_HRV,
-                DashboardCardId.SLEEP_HISTORY_7_DAYS,
-                DashboardCardId.RESPIRATORY_AND_TEMP
-            )
-        )
+        val saved = prefs.getString("card_order", null)
+        val initialOrder = if (saved != null) {
+            val list = saved.split(",").mapNotNull { name ->
+                try {
+                    DashboardCardId.valueOf(name)
+                } catch (e: Exception) {
+                    null
+                }
+            }
+            if (list.size == defaultOrder.size && list.containsAll(defaultOrder)) list else defaultOrder
+        } else {
+            defaultOrder
+        }
+        mutableStateOf(initialOrder)
+    }
+
+    if (showPrivacyDialog) {
+        PrivacyPolicyDialog(onDismiss = { showPrivacyDialog = false })
     }
 
     Column(
@@ -94,6 +120,21 @@ fun DashboardScreen(
 
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 IconButton(
+                    onClick = { showPrivacyDialog = true },
+                    modifier = Modifier
+                        .size(34.dp)
+                        .clip(CircleShape)
+                        .background(Color(0x1AFFFFFF))
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Info,
+                        contentDescription = "Privacy Policy & Transparency Notice",
+                        tint = TextPrimary,
+                        modifier = Modifier.size(16.dp)
+                    )
+                }
+
+                IconButton(
                     onClick = { viewModel.loadMetrics() },
                     modifier = Modifier
                         .size(34.dp)
@@ -102,7 +143,7 @@ fun DashboardScreen(
                 ) {
                     Icon(
                         imageVector = Icons.Default.Refresh,
-                        contentDescription = "Refresh",
+                        contentDescription = "Refresh Health Connect data",
                         tint = TextPrimary,
                         modifier = Modifier.size(16.dp)
                     )
@@ -120,7 +161,7 @@ fun DashboardScreen(
                 ) {
                     Icon(
                         imageVector = if (isEditMode) Icons.Default.Check else Icons.Default.Edit,
-                        contentDescription = "Edit Layout",
+                        contentDescription = if (isEditMode) "Save Card Order" else "Edit Card Layout",
                         modifier = Modifier.size(14.dp)
                     )
                     Spacer(modifier = Modifier.width(6.dp))
@@ -223,13 +264,14 @@ fun DashboardScreen(
                                     val item = mutable.removeAt(index)
                                     mutable.add(index - 1, item)
                                     cardOrder = mutable
+                                    prefs.edit().putString("card_order", mutable.joinToString(",") { it.name }).apply()
                                 },
                                 modifier = Modifier
                                     .size(28.dp)
                                     .clip(CircleShape)
                                     .background(Color(0x33FFFFFF))
                             ) {
-                                Icon(Icons.Default.ArrowUpward, contentDescription = "Move Up", tint = TextPrimary, modifier = Modifier.size(14.dp))
+                                Icon(Icons.Default.ArrowUpward, contentDescription = "Move Card Up", tint = TextPrimary, modifier = Modifier.size(14.dp))
                             }
                         }
                         if (index < cardOrder.size - 1) {
@@ -239,13 +281,14 @@ fun DashboardScreen(
                                     val item = mutable.removeAt(index)
                                     mutable.add(index + 1, item)
                                     cardOrder = mutable
+                                    prefs.edit().putString("card_order", mutable.joinToString(",") { it.name }).apply()
                                 },
                                 modifier = Modifier
                                     .size(28.dp)
                                     .clip(CircleShape)
                                     .background(Color(0x33FFFFFF))
                             ) {
-                                Icon(Icons.Default.ArrowDownward, contentDescription = "Move Down", tint = TextPrimary, modifier = Modifier.size(14.dp))
+                                Icon(Icons.Default.ArrowDownward, contentDescription = "Move Card Down", tint = TextPrimary, modifier = Modifier.size(14.dp))
                             }
                         }
                     }
@@ -255,6 +298,61 @@ fun DashboardScreen(
 
         Spacer(modifier = Modifier.height(30.dp))
     }
+}
+
+@Composable
+fun PrivacyPolicyDialog(onDismiss: () -> Unit) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        confirmButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Got It", color = VayuCyan, fontWeight = FontWeight.Bold)
+            }
+        },
+        title = {
+            Text(
+                text = "Privacy & Transparency Policy",
+                fontSize = 18.sp,
+                fontWeight = FontWeight.Bold,
+                color = TextPrimary
+            )
+        },
+        text = {
+            Column(
+                modifier = Modifier.verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                Text(
+                    text = "• Read-Only Pass-Through: Vayu operates purely as a local viewer for Google Health Connect. It cannot modify, insert, or delete any health records.",
+                    fontSize = 13.sp,
+                    color = TextSecondary
+                )
+                Text(
+                    text = "• 100% On-Device: Absolutely no network permissions exist in Vayu. Health records never leave your Samsung Galaxy S25 Ultra.",
+                    fontSize = 13.sp,
+                    color = TextSecondary
+                )
+                Text(
+                    text = "• Zero Tracking / Zero Accounts: No analytics, advertising SDKs, cloud synchronization, or accounts are used.",
+                    fontSize = 13.sp,
+                    color = TextSecondary
+                )
+                Text(
+                    text = "• Permission Revocation: You can view or revoke Health Connect access anytime in Android Settings → Security & Privacy → Health Connect → App permissions.",
+                    fontSize = 13.sp,
+                    color = TextSecondary
+                )
+                Text(
+                    text = "• Non-Medical Disclaimer: Vayu is for visualization and informational purposes only. It is not a medical device and provides no medical diagnosis, interpretation, or advice. Always consult a healthcare professional for clinical advice.",
+                    fontSize = 13.sp,
+                    color = TextMuted,
+                    fontWeight = FontWeight.Medium
+                )
+            }
+        },
+        containerColor = Color(0xFF141822),
+        shape = RoundedCornerShape(20.dp)
+    )
 }
 
 // CARD 1: Authentic Sleep Session & Stages
@@ -386,14 +484,14 @@ fun DailyActivityCard(state: HealthDashboardState) {
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Text(
-                    text = "DAILY ACTIVITY TOTALS",
+                    text = "HEALTH CONNECT AGGREGATED TOTAL",
                     fontSize = 11.sp,
                     fontWeight = FontWeight.Bold,
                     color = TextMuted,
                     letterSpacing = 1.sp
                 )
                 val sourcesLabel = if (activity?.sources?.isNotEmpty() == true) {
-                    if (activity.sources.size == 1) activity.sources.first() else "Mixed Sources (${activity.sources.size})"
+                    if (activity.sources.size == 1) activity.sources.first() else "Mixed (${activity.sources.size} sources)"
                 } else {
                     "Health Connect"
                 }
@@ -468,6 +566,15 @@ fun DailyActivityCard(state: HealthDashboardState) {
                         }
                     }
                 }
+
+                if (activity.sources.size > 1) {
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text(
+                        text = "Contributing sources: ${activity.sources.joinToString(", ")}",
+                        fontSize = 10.sp,
+                        color = TextMuted
+                    )
+                }
             } else {
                 Text(
                     text = "Data unavailable",
@@ -510,8 +617,13 @@ fun HeartRateCurveCard(state: HealthDashboardState, viewModel: HealthDashboardVi
                         color = TextMuted,
                         letterSpacing = 1.sp
                     )
+                    val hrSourceText = if ((hr?.sources?.size ?: 0) > 1) {
+                        "Health Connect (mixed: ${hr?.sources?.joinToString(", ")})"
+                    } else {
+                        hr?.sourcePackage ?: "Health Connect"
+                    }
                     Text(
-                        text = hr?.sourcePackage ?: "Health Connect",
+                        text = hrSourceText,
                         fontSize = 10.sp,
                         color = TextMuted
                     )
@@ -663,8 +775,9 @@ fun SleepHistory7DaysCard(state: HealthDashboardState) {
                     color = TextMuted,
                     letterSpacing = 1.sp
                 )
-                if (history.isNotEmpty()) {
-                    val avgMinutes = history.map { it.actualSleepMinutes }.average().toLong()
+                val recordedMinutes = history.mapNotNull { it.actualSleepMinutes }
+                if (recordedMinutes.isNotEmpty()) {
+                    val avgMinutes = recordedMinutes.average().toLong()
                     Text(
                         text = "Avg: ${avgMinutes / 60}h ${avgMinutes % 60}m",
                         fontSize = 11.sp,
@@ -679,10 +792,15 @@ fun SleepHistory7DaysCard(state: HealthDashboardState) {
             if (history.isNotEmpty()) {
                 val dayFormatter = DateTimeFormatter.ofPattern("E")
                 val barPoints = history.map { summary ->
+                    val actual = summary.actualSleepMinutes
                     BarDataPoint(
                         label = summary.date.format(dayFormatter).take(1),
-                        value = summary.actualSleepMinutes / 60f,
-                        formattedValue = "${summary.actualSleepMinutes / 60}h ${summary.actualSleepMinutes % 60}m"
+                        value = actual?.let { it / 60f } ?: 0f,
+                        formattedValue = if (actual != null) {
+                            "${actual / 60}h ${actual % 60}m"
+                        } else {
+                            "Elapsed: ${summary.sessionElapsedMinutes / 60}h ${summary.sessionElapsedMinutes % 60}m"
+                        }
                     )
                 }
 
@@ -691,6 +809,16 @@ fun SleepHistory7DaysCard(state: HealthDashboardState) {
                     primaryColor = Color(0xFF818CF8),
                     chartHeight = 85.dp
                 )
+
+                val multiSessionDays = history.filter { it.sessionCount > 1 }
+                if (multiSessionDays.isNotEmpty()) {
+                    Spacer(modifier = Modifier.height(6.dp))
+                    Text(
+                        text = "Multiple sessions recorded on ${multiSessionDays.size} day(s)",
+                        fontSize = 10.sp,
+                        color = TextMuted
+                    )
+                }
             } else {
                 Text(
                     text = "Data unavailable",
@@ -735,7 +863,7 @@ fun RespiratoryAndTempCard(state: HealthDashboardState) {
                         Spacer(modifier = Modifier.width(3.dp))
                         Text("%", fontSize = 11.sp, color = TextMuted)
                     }
-                    Text(resp.sourcePackage ?: "Health Connect", fontSize = 9.sp, color = TextMuted, maxLines = 1)
+                    Text(resp.spo2SourcePackage ?: "Health Connect", fontSize = 9.sp, color = TextMuted, maxLines = 1)
                 } else {
                     Text("Data unavailable", fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = TextUnavailable)
                     Text("No record today", fontSize = 10.sp, color = TextMuted)

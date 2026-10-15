@@ -193,24 +193,45 @@ open class HealthConnectManager(private val context: Context? = null) {
             response.records
                 .groupBy { it.endTime.atZone(zone).toLocalDate() }
                 .map { (date, sessions) ->
-                    val mainSession = sessions.maxByOrNull { Duration.between(it.startTime, it.endTime) }!!
-                    val elapsed = Duration.between(mainSession.startTime, mainSession.endTime).toMinutes()
-                    var actualSleep = 0L
-                    mainSession.stages.forEach { stage ->
-                        if (stage.stage in setOf(
-                                SleepSessionRecord.STAGE_TYPE_DEEP,
-                                SleepSessionRecord.STAGE_TYPE_REM,
-                                SleepSessionRecord.STAGE_TYPE_LIGHT,
-                                SleepSessionRecord.STAGE_TYPE_SLEEPING
-                            )) {
-                            actualSleep += Duration.between(stage.startTime, stage.endTime).toMinutes().coerceAtLeast(0)
+                    val contributingSources = sessions.map { it.metadata.dataOrigin.packageName }.toSet()
+                    var totalActualSleep: Long? = null
+                    var totalElapsed = 0L
+
+                    sessions.forEach { session ->
+                        val sessionElapsed = Duration.between(session.startTime, session.endTime).toMinutes().coerceAtLeast(0)
+                        totalElapsed += sessionElapsed
+
+                        var sessionActualSleep = 0L
+                        var hasValidStages = false
+                        session.stages.forEach { stage ->
+                            if (stage.stage in setOf(
+                                    SleepSessionRecord.STAGE_TYPE_DEEP,
+                                    SleepSessionRecord.STAGE_TYPE_REM,
+                                    SleepSessionRecord.STAGE_TYPE_LIGHT,
+                                    SleepSessionRecord.STAGE_TYPE_SLEEPING
+                                )) {
+                                sessionActualSleep += Duration.between(stage.startTime, stage.endTime).toMinutes().coerceAtLeast(0)
+                                hasValidStages = true
+                            }
+                        }
+                        if (hasValidStages) {
+                            totalActualSleep = (totalActualSleep ?: 0L) + sessionActualSleep
                         }
                     }
+
+                    val primarySource = if (contributingSources.size == 1) {
+                        contributingSources.first()
+                    } else {
+                        "Health Connect (${contributingSources.size} sources)"
+                    }
+
                     DailySleepSummary(
                         date = date,
-                        actualSleepMinutes = if (actualSleep > 0) actualSleep else elapsed,
-                        sessionElapsedMinutes = elapsed,
-                        sourcePackage = mainSession.metadata.dataOrigin.packageName
+                        actualSleepMinutes = totalActualSleep,
+                        sessionElapsedMinutes = totalElapsed,
+                        sourcePackage = primarySource,
+                        sessionCount = sessions.size,
+                        contributingSources = contributingSources
                     )
                 }
                 .sortedBy { it.date }
@@ -272,7 +293,7 @@ open class HealthConnectManager(private val context: Context? = null) {
 
     /**
      * Reads all heart rate records within the window using pagination.
-     * Preserves real sample points for accurate charting.
+     * Preserves real sample points and their source origins for accurate charting.
      */
     open suspend fun readHeartRate(start: Instant, end: Instant): HeartRateMetric? {
         val client = healthConnectClient ?: return null
@@ -298,8 +319,13 @@ open class HealthConnectManager(private val context: Context? = null) {
             } while (pageToken != null)
 
             val allSamples = allRecords.flatMap { record ->
+                val origin = record.metadata.dataOrigin.packageName
                 record.samples.map { sample ->
-                    HeartRateSamplePoint(time = sample.time, beatsPerMinute = sample.beatsPerMinute)
+                    HeartRateSamplePoint(
+                        time = sample.time,
+                        beatsPerMinute = sample.beatsPerMinute,
+                        sourcePackage = origin
+                    )
                 }
             }.sortedBy { it.time }
 
@@ -309,7 +335,8 @@ open class HealthConnectManager(private val context: Context? = null) {
             val maxBpm = allSamples.maxOf { it.beatsPerMinute }
             val avgBpm = (allSamples.sumOf { it.beatsPerMinute } / allSamples.size.toDouble()).toLong()
             val latestSample = allSamples.last()
-            val latestOrigin = allRecords.lastOrNull()?.metadata?.dataOrigin?.packageName ?: "Unknown"
+            val latestOrigin = latestSample.sourcePackage
+            val contributingSources = allSamples.map { it.sourcePackage }.toSet()
 
             HeartRateMetric(
                 latestBpm = latestSample.beatsPerMinute,
@@ -318,7 +345,8 @@ open class HealthConnectManager(private val context: Context? = null) {
                 averageBpm = avgBpm,
                 samples = allSamples,
                 timestamp = latestSample.time,
-                sourcePackage = latestOrigin
+                sourcePackage = latestOrigin,
+                sources = contributingSources
             )
         } catch (e: Exception) {
             Log.e(tag, "Error reading heart rate records", e)
@@ -384,6 +412,7 @@ open class HealthConnectManager(private val context: Context? = null) {
 
     /**
      * Reads respiratory rate, oxygen saturation, and skin temperature accurately.
+     * Retains independent source package and timestamp for each individual measurement.
      */
     open suspend fun readRespiratory(start: Instant, end: Instant): RespiratoryMetric? {
         val client = healthConnectClient ?: return null
@@ -450,16 +479,26 @@ open class HealthConnectManager(private val context: Context? = null) {
             return null
         }
 
-        val primarySource = latestSpo2?.metadata?.dataOrigin?.packageName
-            ?: latestResp?.metadata?.dataOrigin?.packageName
-            ?: skinTempMetric?.sourcePackage
+        val respSource = latestResp?.metadata?.dataOrigin?.packageName
+        val respTime = latestResp?.time
+        val spo2Source = latestSpo2?.metadata?.dataOrigin?.packageName
+        val spo2Time = latestSpo2?.time
+
+        val sources = mutableSetOf<String>()
+        respSource?.let { sources.add(it) }
+        spo2Source?.let { sources.add(it) }
+        skinTempMetric?.sourcePackage?.let { sources.add(it) }
 
         return RespiratoryMetric(
             breathsPerMinute = latestResp?.rate,
+            respiratoryTimestamp = respTime,
+            respiratorySourcePackage = respSource,
             spo2Percentage = latestSpo2?.percentage?.value,
+            spo2Timestamp = spo2Time,
+            spo2SourcePackage = spo2Source,
             skinTemperature = skinTempMetric,
-            timestamp = latestSpo2?.time ?: latestResp?.time ?: skinTempMetric?.timestamp,
-            sourcePackage = primarySource
+            timestamp = spo2Time ?: respTime ?: skinTempMetric?.timestamp,
+            contributingSources = sources
         )
     }
 
@@ -518,6 +557,22 @@ open class HealthConnectManager(private val context: Context? = null) {
                 }
             }
 
+            if (HealthPermission.getReadPermission(HeartRateRecord::class) in granted) {
+                val hr = client.readRecords(ReadRecordsRequest(HeartRateRecord::class, TimeRangeFilter.between(start, end), pageSize = 50))
+                hr.records.forEach {
+                    list.add(
+                        RawHealthRecord(
+                            recordType = "HeartRateRecord",
+                            valueSummary = "${it.samples.size} samples (Latest: ${it.samples.lastOrNull()?.beatsPerMinute ?: 0} bpm)",
+                            startTime = it.startTime,
+                            endTime = it.endTime,
+                            clientPackage = it.metadata.dataOrigin.packageName,
+                            recordId = it.metadata.id
+                        )
+                    )
+                }
+            }
+
             if (HealthPermission.getReadPermission(StepsRecord::class) in granted) {
                 val steps = client.readRecords(ReadRecordsRequest(StepsRecord::class, TimeRangeFilter.between(start, end)))
                 steps.records.forEach {
@@ -534,6 +589,22 @@ open class HealthConnectManager(private val context: Context? = null) {
                 }
             }
 
+            if (HealthPermission.getReadPermission(DistanceRecord::class) in granted) {
+                val distance = client.readRecords(ReadRecordsRequest(DistanceRecord::class, TimeRangeFilter.between(start, end)))
+                distance.records.forEach {
+                    list.add(
+                        RawHealthRecord(
+                            recordType = "DistanceRecord",
+                            valueSummary = "Distance: ${"%.1f".format(it.distance.inMeters)} m",
+                            startTime = it.startTime,
+                            endTime = it.endTime,
+                            clientPackage = it.metadata.dataOrigin.packageName,
+                            recordId = it.metadata.id
+                        )
+                    )
+                }
+            }
+
             if (HealthPermission.getReadPermission(ActiveCaloriesBurnedRecord::class) in granted) {
                 val cal = client.readRecords(ReadRecordsRequest(ActiveCaloriesBurnedRecord::class, TimeRangeFilter.between(start, end)))
                 cal.records.forEach {
@@ -541,6 +612,72 @@ open class HealthConnectManager(private val context: Context? = null) {
                         RawHealthRecord(
                             recordType = "ActiveCaloriesBurnedRecord",
                             valueSummary = "Active Energy: ${"%.0f".format(it.energy.inKilocalories)} kcal",
+                            startTime = it.startTime,
+                            endTime = it.endTime,
+                            clientPackage = it.metadata.dataOrigin.packageName,
+                            recordId = it.metadata.id
+                        )
+                    )
+                }
+            }
+
+            if (HealthPermission.getReadPermission(TotalCaloriesBurnedRecord::class) in granted) {
+                val totCal = client.readRecords(ReadRecordsRequest(TotalCaloriesBurnedRecord::class, TimeRangeFilter.between(start, end)))
+                totCal.records.forEach {
+                    list.add(
+                        RawHealthRecord(
+                            recordType = "TotalCaloriesBurnedRecord",
+                            valueSummary = "Total Energy: ${"%.0f".format(it.energy.inKilocalories)} kcal",
+                            startTime = it.startTime,
+                            endTime = it.endTime,
+                            clientPackage = it.metadata.dataOrigin.packageName,
+                            recordId = it.metadata.id
+                        )
+                    )
+                }
+            }
+
+            if (HealthPermission.getReadPermission(OxygenSaturationRecord::class) in granted) {
+                val spo2 = client.readRecords(ReadRecordsRequest(OxygenSaturationRecord::class, TimeRangeFilter.between(start, end)))
+                spo2.records.forEach {
+                    list.add(
+                        RawHealthRecord(
+                            recordType = "OxygenSaturationRecord",
+                            valueSummary = "SpO2: ${"%.1f".format(it.percentage.value)}%",
+                            startTime = it.time,
+                            endTime = null,
+                            clientPackage = it.metadata.dataOrigin.packageName,
+                            recordId = it.metadata.id
+                        )
+                    )
+                }
+            }
+
+            if (HealthPermission.getReadPermission(RespiratoryRateRecord::class) in granted) {
+                val resp = client.readRecords(ReadRecordsRequest(RespiratoryRateRecord::class, TimeRangeFilter.between(start, end)))
+                resp.records.forEach {
+                    list.add(
+                        RawHealthRecord(
+                            recordType = "RespiratoryRateRecord",
+                            valueSummary = "Respiration: ${"%.1f".format(it.rate)} bpm",
+                            startTime = it.time,
+                            endTime = null,
+                            clientPackage = it.metadata.dataOrigin.packageName,
+                            recordId = it.metadata.id
+                        )
+                    )
+                }
+            }
+
+            if (isSkinTemperatureSupported() && HealthPermission.getReadPermission(SkinTemperatureRecord::class) in granted) {
+                val skin = client.readRecords(ReadRecordsRequest(SkinTemperatureRecord::class, TimeRangeFilter.between(start, end)))
+                skin.records.forEach {
+                    val count = it.deltas.size
+                    val base = it.baseline?.inCelsius?.let { b -> "Base: ${"%.1f".format(b)}°C, " } ?: ""
+                    list.add(
+                        RawHealthRecord(
+                            recordType = "SkinTemperatureRecord",
+                            valueSummary = "${base}${count} deltas",
                             startTime = it.startTime,
                             endTime = it.endTime,
                             clientPackage = it.metadata.dataOrigin.packageName,

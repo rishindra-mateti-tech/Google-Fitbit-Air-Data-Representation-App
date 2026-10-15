@@ -32,7 +32,6 @@ fun ActivityScreen(
 ) {
     val scrollState = rememberScrollState()
     val activity = state.activity
-    val sources = activity?.sources?.joinToString(", ") ?: "Health Connect"
 
     Column(
         modifier = modifier
@@ -61,14 +60,21 @@ fun ActivityScreen(
 
         // Steps Tile
         val stepsStr = activity?.steps?.let { "%,d".format(it) }
+        val updatedTimeStr = activity?.lastUpdated?.let { "Aggregated as of ${viewModel.formatTime(it)}" } ?: "Health Connect aggregated total"
+        val sourcesLabel = if (activity != null && activity.sources.isNotEmpty()) {
+            if (activity.sources.size == 1) activity.sources.first() else "Health Connect (mixed: ${activity.sources.joinToString(", ")})"
+        } else {
+            "Health Connect"
+        }
+
         MetricTile(
             title = "Total Steps",
             value = stepsStr,
             unit = if (stepsStr != null) "steps" else null,
             icon = Icons.AutoMirrored.Filled.DirectionsWalk,
             accentColor = VayuCyan,
-            timestamp = "De-duplicated Health Connect total",
-            source = sources
+            timestamp = updatedTimeStr,
+            source = sourcesLabel
         )
 
         Spacer(modifier = Modifier.height(14.dp))
@@ -85,7 +91,7 @@ fun ActivityScreen(
                 unit = if (activeCalStr != null) "kcal" else null,
                 icon = Icons.Default.LocalFireDepartment,
                 accentColor = EnergyAmber,
-                source = sources,
+                source = sourcesLabel,
                 modifier = Modifier.weight(1f)
             )
 
@@ -96,7 +102,7 @@ fun ActivityScreen(
                 unit = if (totalCalStr != null) "kcal" else null,
                 icon = Icons.Default.LocalFireDepartment,
                 accentColor = VayuBlue,
-                source = sources,
+                source = sourcesLabel,
                 modifier = Modifier.weight(1f)
             )
         }
@@ -111,7 +117,7 @@ fun ActivityScreen(
             unit = if (distKm != null) "km" else null,
             icon = Icons.Default.Map,
             accentColor = RespirationTeal,
-            source = sources
+            source = sourcesLabel
         )
 
         Spacer(modifier = Modifier.height(14.dp))

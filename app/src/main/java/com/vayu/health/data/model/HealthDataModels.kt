@@ -44,9 +44,11 @@ data class SleepMetric(
 
 data class DailySleepSummary(
     val date: LocalDate,
-    val actualSleepMinutes: Long,
+    val actualSleepMinutes: Long?,
     val sessionElapsedMinutes: Long,
-    val sourcePackage: String
+    val sourcePackage: String,
+    val sessionCount: Int = 1,
+    val contributingSources: Set<String> = emptySet()
 )
 
 data class RestingHeartRateMetric(
@@ -63,7 +65,8 @@ data class HrvMetric(
 
 data class HeartRateSamplePoint(
     val time: Instant,
-    val beatsPerMinute: Long
+    val beatsPerMinute: Long,
+    val sourcePackage: String = ""
 )
 
 data class HeartRateMetric(
@@ -73,7 +76,8 @@ data class HeartRateMetric(
     val averageBpm: Long?,
     val samples: List<HeartRateSamplePoint>,
     val timestamp: Instant?,
-    val sourcePackage: String
+    val sourcePackage: String,
+    val sources: Set<String> = emptySet()
 )
 
 data class ActivityMetric(
@@ -97,10 +101,14 @@ data class SkinTemperatureMetric(
 
 data class RespiratoryMetric(
     val breathsPerMinute: Double?,
+    val respiratoryTimestamp: Instant?,
+    val respiratorySourcePackage: String?,
     val spo2Percentage: Double?,
+    val spo2Timestamp: Instant?,
+    val spo2SourcePackage: String?,
     val skinTemperature: SkinTemperatureMetric?,
     val timestamp: Instant?,
-    val sourcePackage: String?
+    val contributingSources: Set<String> = emptySet()
 )
 
 data class RawHealthRecord(

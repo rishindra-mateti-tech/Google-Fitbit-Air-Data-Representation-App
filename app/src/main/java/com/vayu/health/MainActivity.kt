@@ -125,8 +125,17 @@ class MainActivity : ComponentActivity() {
                                         Spacer(modifier = Modifier.height(8.dp))
                                         Button(
                                             onClick = {
-                                                val intent = Intent(Intent.ACTION_VIEW, Uri.parse("market://details?id=com.google.android.apps.healthdata"))
-                                                startActivity(intent)
+                                                try {
+                                                    val intent = Intent(Intent.ACTION_VIEW, Uri.parse("market://details?id=com.google.android.apps.healthdata"))
+                                                    startActivity(intent)
+                                                } catch (e: Exception) {
+                                                    try {
+                                                        val webIntent = Intent(Intent.ACTION_VIEW, Uri.parse("https://play.google.com/store/apps/details?id=com.google.android.apps.healthdata"))
+                                                        startActivity(webIntent)
+                                                    } catch (_: Exception) {
+                                                        android.widget.Toast.makeText(this@MainActivity, "Unable to launch Play Store", android.widget.Toast.LENGTH_SHORT).show()
+                                                    }
+                                                }
                                             },
                                             colors = ButtonDefaults.buttonColors(
                                                 containerColor = VayuCyan,

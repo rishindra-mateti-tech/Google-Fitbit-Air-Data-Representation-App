@@ -44,13 +44,13 @@ fun InspectorScreen(
         ) {
             Column {
                 Text(
-                    text = "Data Inspector",
-                    fontSize = 24.sp,
+                    text = "Selected Raw Health Connect Records",
+                    fontSize = 20.sp,
                     fontWeight = FontWeight.Bold,
                     color = TextPrimary
                 )
                 Text(
-                    text = "Raw Health Connect Records",
+                    text = "Health Connect Supported Record Types",
                     fontSize = 12.sp,
                     color = VayuCyan
                 )
@@ -64,7 +64,7 @@ fun InspectorScreen(
             ) {
                 Icon(
                     imageVector = Icons.Default.Refresh,
-                    contentDescription = "Refresh",
+                    contentDescription = "Refresh Health Connect Records",
                     tint = VayuCyan
                 )
             }
@@ -92,7 +92,7 @@ fun InspectorScreen(
                 }
                 Spacer(modifier = Modifier.height(6.dp))
                 Text(
-                    text = "Inspecting 24h window. Found ${state.rawRecords.size} record entries from wearable sources.",
+                    text = "Inspecting 24h window. Found ${state.rawRecords.size} record entries from Health Connect sources across all requested types.",
                     fontSize = 12.sp,
                     color = TextSecondary
                 )
@@ -120,7 +120,7 @@ fun InspectorScreen(
                     )
                     Spacer(modifier = Modifier.height(8.dp))
                     Text(
-                        text = "1. Confirm your Fitbit app is synced with your Fitbit Air wearable.\n2. In Fitbit App > Settings > Connected Apps, verify Health Connect is enabled.\n3. Pull-down or tap refresh above to inspect records.",
+                        text = "1. Confirm your wearable or fitness tracking app is synced with Google Health Connect.\n2. In Health Connect Settings > App permissions, verify Vayu has read permissions enabled.\n3. Tap refresh above to query updated records.",
                         fontSize = 12.sp,
                         color = TextMuted,
                         lineHeight = 18.sp

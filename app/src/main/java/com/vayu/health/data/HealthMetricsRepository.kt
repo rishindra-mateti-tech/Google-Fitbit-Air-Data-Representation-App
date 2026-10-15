@@ -9,8 +9,35 @@ import java.time.LocalDate
 import java.time.ZoneId
 import java.time.temporal.ChronoUnit
 
+class HealthDateRangeCalculator(
+    private val clock: () -> Instant = { Instant.now() },
+    private val zoneId: () -> ZoneId = { ZoneId.systemDefault() }
+) {
+    data class DateWindows(
+        val now: Instant,
+        val startOfToday: Instant,
+        val sleepWindowStart: Instant,
+        val sleepHistoryStart: Instant
+    )
+
+    fun calculateWindows(): DateWindows {
+        val now = clock()
+        val zone = zoneId()
+        val startOfToday = LocalDate.now(zone).atStartOfDay(zone).toInstant()
+        val sleepWindowStart = now.minus(24, ChronoUnit.HOURS)
+        val sleepHistoryStart = now.minus(7, ChronoUnit.DAYS)
+        return DateWindows(
+            now = now,
+            startOfToday = startOfToday,
+            sleepWindowStart = sleepWindowStart,
+            sleepHistoryStart = sleepHistoryStart
+        )
+    }
+}
+
 class HealthMetricsRepository(
-    private val healthConnectManager: HealthConnectManager
+    private val healthConnectManager: HealthConnectManager,
+    private val dateRangeCalculator: HealthDateRangeCalculator = HealthDateRangeCalculator()
 ) {
     suspend fun getTodayDashboardState(): HealthDashboardState = withContext(Dispatchers.IO) {
         val sdkStatus = healthConnectManager.getSdkStatus()
@@ -38,62 +65,60 @@ class HealthMetricsRepository(
             )
         }
 
-        val now = Instant.now()
-        val zone = ZoneId.systemDefault()
-        val startOfToday = LocalDate.now(zone).atStartOfDay(zone).toInstant()
-        // For sleep, we look back up to 24 hours to catch last night's session
-        val sleepWindowStart = now.minus(24, ChronoUnit.HOURS)
-        // For 7-day sleep history, look back 7 days
-        val historyStart = now.minus(7, ChronoUnit.DAYS)
+        val windows = dateRangeCalculator.calculateWindows()
+        val now = windows.now
+        val startOfToday = windows.startOfToday
+        val sleepWindowStart = windows.sleepWindowStart
+        val historyStart = windows.sleepHistoryStart
 
         val errors = mutableListOf<String>()
 
         val sleep = try {
             healthConnectManager.readSleep(sleepWindowStart, now)
         } catch (e: Exception) {
-            errors.add("Error reading sleep: ${e.message}")
+            errors.add(sanitizeErrorMessage("sleep", e))
             null
         }
 
         val sleepHistory = try {
             healthConnectManager.readSleepHistory(historyStart, now)
         } catch (e: Exception) {
-            errors.add("Error reading sleep history: ${e.message}")
+            errors.add(sanitizeErrorMessage("sleep history", e))
             emptyList()
         }
 
         val restingHr = try {
             healthConnectManager.readRestingHeartRate(startOfToday, now)
         } catch (e: Exception) {
-            errors.add("Error reading resting heart rate: ${e.message}")
+            errors.add(sanitizeErrorMessage("resting heart rate", e))
             null
         }
 
         val hrv = try {
             healthConnectManager.readHrv(sleepWindowStart, now)
         } catch (e: Exception) {
-            errors.add("Error reading HRV: ${e.message}")
+            errors.add(sanitizeErrorMessage("HRV", e))
             null
         }
 
         val heartRate = try {
             healthConnectManager.readHeartRate(startOfToday, now)
         } catch (e: Exception) {
-            errors.add("Error reading heart rate: ${e.message}")
+            errors.add(sanitizeErrorMessage("heart rate", e))
             null
         }
 
         val activity = try {
             healthConnectManager.readActivity(startOfToday, now)
         } catch (e: Exception) {
-            errors.add("Error reading activity: ${e.message}")
+            errors.add(sanitizeErrorMessage("activity", e))
             null
         }
 
         val respiratory = try {
             healthConnectManager.readRespiratory(sleepWindowStart, now)
         } catch (e: Exception) {
-            errors.add("Error reading respiratory: ${e.message}")
+            errors.add(sanitizeErrorMessage("respiratory", e))
             null
         }
 
@@ -116,5 +141,11 @@ class HealthMetricsRepository(
             isSkinTemperatureSupported = isSkinTempSupported,
             errorMessages = errors
         )
+    }
+
+    internal fun sanitizeErrorMessage(metricName: String, e: Exception): String {
+        val raw = e.message?.takeIf { it.isNotBlank() } ?: "System read error"
+        val clean = raw.replace(Regex("@[0-9a-fA-F]+"), "").trim()
+        return "Error reading $metricName: $clean"
     }
 }

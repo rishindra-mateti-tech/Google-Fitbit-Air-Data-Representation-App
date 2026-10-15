@@ -105,8 +105,13 @@ fun HeartVitalsScreen(
                             color = TextSecondary,
                             letterSpacing = 1.sp
                         )
+                        val hrSourceText = if ((hr?.sources?.size ?: 0) > 1) {
+                            "Health Connect (mixed: ${hr?.sources?.joinToString(", ")})"
+                        } else {
+                            hr?.sourcePackage ?: "Health Connect"
+                        }
                         Text(
-                            text = hr?.sourcePackage ?: "Health Connect",
+                            text = hrSourceText,
                             fontSize = 10.sp,
                             color = TextMuted
                         )
@@ -174,7 +179,8 @@ fun HeartVitalsScreen(
                 unit = if (respRate != null) "brpm" else null,
                 icon = Icons.Default.Air,
                 accentColor = RespirationTeal,
-                source = resp?.sourcePackage ?: "Health Connect",
+                timestamp = resp?.respiratoryTimestamp?.let { "Recorded at ${viewModel.formatTime(it)}" },
+                source = resp?.respiratorySourcePackage ?: "Health Connect",
                 modifier = Modifier.weight(1f)
             )
 
@@ -184,7 +190,8 @@ fun HeartVitalsScreen(
                 value = spo2?.let { "%.1f%%".format(it) },
                 icon = Icons.Default.Thermostat,
                 accentColor = Spo2Blue,
-                source = resp?.sourcePackage ?: "Health Connect",
+                timestamp = resp?.spo2Timestamp?.let { "Recorded at ${viewModel.formatTime(it)}" },
+                source = resp?.spo2SourcePackage ?: "Health Connect",
                 modifier = Modifier.weight(1f)
             )
         }
