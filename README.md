@@ -98,7 +98,7 @@ To guarantee complete fidelity to your wearable:
 
 | File | Purpose | SHA-256 Checksum |
 | :--- | :--- | :--- |
-| **`Vayu-Personal-Test.apk`** | Sideloadable debug APK for personal testing on Samsung Galaxy S25 Ultra | `1FCC26B6717AD8B285F5D8B564D30AE9B62360FA6CAFEB29300A280674EAC492` |
+| **`Vayu-Personal-Test.apk`** | Sideloadable debug APK with authentic custom app icon for personal testing on Samsung Galaxy S25 Ultra | `88E0166E077FD5BB0019706C130ACF2DE67963926D415E79927445028378F556` |
 
 ---
 
