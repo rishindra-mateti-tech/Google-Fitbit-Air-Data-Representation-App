@@ -18,7 +18,7 @@ class HealthDashboardViewModel(
     private val sourcePreferences: HealthSourcePreferences? = null
 ) : ViewModel() {
 
-    private var currentSource: String? = sourcePreferences?.getSelectedSource() ?: "com.fitbit.FitbitMobile"
+    private var currentSource: String? = sourcePreferences?.getSelectedSource()
 
     private val _uiState = MutableStateFlow(
         HealthDashboardState(
@@ -41,18 +41,6 @@ class HealthDashboardViewModel(
             _uiState.value = _uiState.value.copy(isLoading = true)
             val result = repository.getTodayDashboardState(sourceFilter = currentSource)
             
-            // On first run, if a Fitbit package is detected that differs from currentSource, auto-prefer it
-            if (_isFirstRun.value && result.detectedSources.isNotEmpty()) {
-                val detectedFitbit = result.detectedSources.firstOrNull { it.contains("fitbit", ignoreCase = true) }
-                if (detectedFitbit != null && detectedFitbit != currentSource) {
-                    currentSource = detectedFitbit
-                    sourcePreferences?.setSelectedSource(detectedFitbit)
-                    val reloaded = repository.getTodayDashboardState(sourceFilter = currentSource)
-                    _uiState.value = reloaded
-                    return@launch
-                }
-            }
-
             _uiState.value = result
         }
     }

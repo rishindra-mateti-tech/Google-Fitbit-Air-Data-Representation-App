@@ -275,7 +275,7 @@ fun DashboardScreen(
             )
         }
 
-        // Mixed-Source Mode Warning Banner
+        // All-source mirror mode: provenance remains visible on every reading.
         if (state.selectedSource == null) {
             Spacer(modifier = Modifier.height(6.dp))
             Box(
@@ -287,7 +287,7 @@ fun DashboardScreen(
                     .padding(horizontal = 12.dp, vertical = 8.dp)
             ) {
                 Text(
-                    text = "Mixed-Source Mode: Showing aggregated data across all connected apps. Tap the source button above to restrict to Fitbit only.",
+                    text = "Health Connect mirror: showing exact records from your connected sources. Each card identifies its original source.",
                     fontSize = 11.sp,
                     color = TextPrimary
                 )

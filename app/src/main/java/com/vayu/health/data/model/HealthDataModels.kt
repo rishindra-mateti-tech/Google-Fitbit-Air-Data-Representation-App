@@ -131,7 +131,7 @@ data class HealthDashboardState(
     val sdkStatus: HealthConnectStatus = HealthConnectStatus.AVAILABLE,
     val grantedPermissions: Set<String> = emptySet(),
     val lastRefreshTime: Instant? = null,
-    val selectedSource: String? = "com.fitbit.FitbitMobile",
+    val selectedSource: String? = null,
     val detectedSources: Set<String> = emptySet(),
     val isFitbitDetected: Boolean = false,
     val isFitbitSyncNeeded: Boolean = false,

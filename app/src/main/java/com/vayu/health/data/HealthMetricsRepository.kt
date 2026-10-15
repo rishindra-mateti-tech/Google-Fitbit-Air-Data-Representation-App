@@ -44,7 +44,7 @@ class HealthMetricsRepository(
      * When sourceFilter is null, reads in mixed-source "All Health Connect Sources" mode.
      * When sourceFilter is non-null (e.g. "com.fitbit.FitbitMobile"), restricts all reads strictly to that origin.
      */
-    suspend fun getTodayDashboardState(sourceFilter: String? = "com.fitbit.FitbitMobile"): HealthDashboardState = withContext(Dispatchers.IO) {
+    suspend fun getTodayDashboardState(sourceFilter: String? = null): HealthDashboardState = withContext(Dispatchers.IO) {
         val sdkStatus = healthConnectManager.getSdkStatus()
         if (sdkStatus != HealthConnectStatus.AVAILABLE) {
             return@withContext HealthDashboardState(
