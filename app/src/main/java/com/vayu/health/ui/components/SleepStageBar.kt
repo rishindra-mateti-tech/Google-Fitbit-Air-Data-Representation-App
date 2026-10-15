@@ -14,18 +14,25 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.vayu.health.data.model.SleepMetric
+import com.vayu.health.data.model.SleepStageType
 import com.vayu.health.ui.theme.*
+
+val SleepOutOfBed = Color(0xFFFF7043)
 
 @Composable
 fun SleepStageBar(
     sleep: SleepMetric,
     modifier: Modifier = Modifier
 ) {
-    val total = (sleep.deepMinutes + sleep.remMinutes + sleep.lightMinutes + sleep.awakeMinutes).coerceAtLeast(1L)
-    val deepWeight = (sleep.deepMinutes.toFloat() / total).coerceAtLeast(0.01f)
-    val remWeight = (sleep.remMinutes.toFloat() / total).coerceAtLeast(0.01f)
-    val lightWeight = (sleep.lightMinutes.toFloat() / total).coerceAtLeast(0.01f)
-    val awakeWeight = (sleep.awakeMinutes.toFloat() / total).coerceAtLeast(0.01f)
+    val total = (sleep.deepMinutes + sleep.remMinutes + sleep.lightMinutes +
+            sleep.sleepingMinutes + sleep.awakeMinutes + sleep.outOfBedMinutes).coerceAtLeast(1L)
+
+    val deepWeight = (sleep.deepMinutes.toFloat() / total).coerceAtLeast(0f)
+    val remWeight = (sleep.remMinutes.toFloat() / total).coerceAtLeast(0f)
+    val lightWeight = (sleep.lightMinutes.toFloat() / total).coerceAtLeast(0f)
+    val sleepingWeight = (sleep.sleepingMinutes.toFloat() / total).coerceAtLeast(0f)
+    val awakeWeight = (sleep.awakeMinutes.toFloat() / total).coerceAtLeast(0f)
+    val outOfBedWeight = (sleep.outOfBedMinutes.toFloat() / total).coerceAtLeast(0f)
 
     Column(modifier = modifier.fillMaxWidth()) {
         // Multi-segment horizontal bar
@@ -36,51 +43,58 @@ fun SleepStageBar(
                 .clip(RoundedCornerShape(7.dp))
                 .background(Color(0x15FFFFFF))
         ) {
-            if (sleep.deepMinutes > 0) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxHeight()
-                        .weight(deepWeight)
-                        .background(SleepDeep)
-                )
+            if (deepWeight > 0) {
+                Box(modifier = Modifier.fillMaxHeight().weight(deepWeight).background(SleepDeep))
             }
-            if (sleep.remMinutes > 0) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxHeight()
-                        .weight(remWeight)
-                        .background(SleepRem)
-                )
+            if (remWeight > 0) {
+                Box(modifier = Modifier.fillMaxHeight().weight(remWeight).background(SleepRem))
             }
-            if (sleep.lightMinutes > 0) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxHeight()
-                        .weight(lightWeight)
-                        .background(SleepLight)
-                )
+            if (lightWeight > 0) {
+                Box(modifier = Modifier.fillMaxHeight().weight(lightWeight).background(SleepLight))
             }
-            if (sleep.awakeMinutes > 0) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxHeight()
-                        .weight(awakeWeight)
-                        .background(SleepAwake)
-                )
+            if (sleepingWeight > 0) {
+                Box(modifier = Modifier.fillMaxHeight().weight(sleepingWeight).background(Color(0xFF4FC3F7)))
+            }
+            if (awakeWeight > 0) {
+                Box(modifier = Modifier.fillMaxHeight().weight(awakeWeight).background(SleepAwake))
+            }
+            if (outOfBedWeight > 0) {
+                Box(modifier = Modifier.fillMaxHeight().weight(outOfBedWeight).background(SleepOutOfBed))
             }
         }
 
-        Spacer(modifier = Modifier.height(14.dp))
+        Spacer(modifier = Modifier.height(12.dp))
 
-        // Legend with exact durations
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween
-        ) {
-            StageLegendItem(label = "Deep", minutes = sleep.deepMinutes, color = SleepDeep)
-            StageLegendItem(label = "REM", minutes = sleep.remMinutes, color = SleepRem)
-            StageLegendItem(label = "Light", minutes = sleep.lightMinutes, color = SleepLight)
-            StageLegendItem(label = "Awake", minutes = sleep.awakeMinutes, color = SleepAwake)
+        // Legend with exact durations for each stage
+        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                if (sleep.deepMinutes > 0) {
+                    StageLegendItem(label = "Deep", minutes = sleep.deepMinutes, color = SleepDeep)
+                }
+                if (sleep.remMinutes > 0) {
+                    StageLegendItem(label = "REM", minutes = sleep.remMinutes, color = SleepRem)
+                }
+                if (sleep.lightMinutes > 0) {
+                    StageLegendItem(label = "Light", minutes = sleep.lightMinutes, color = SleepLight)
+                }
+            }
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                if (sleep.sleepingMinutes > 0) {
+                    StageLegendItem(label = "Sleeping (Unspecified)", minutes = sleep.sleepingMinutes, color = Color(0xFF4FC3F7))
+                }
+                if (sleep.awakeMinutes > 0) {
+                    StageLegendItem(label = "Awake", minutes = sleep.awakeMinutes, color = SleepAwake)
+                }
+                if (sleep.outOfBedMinutes > 0) {
+                    StageLegendItem(label = "Out of Bed", minutes = sleep.outOfBedMinutes, color = SleepOutOfBed)
+                }
+            }
         }
     }
 }

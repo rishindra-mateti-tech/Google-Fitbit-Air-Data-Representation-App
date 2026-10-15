@@ -4,7 +4,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.DirectionsWalk
+import androidx.compose.material.icons.automirrored.filled.DirectionsWalk
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.LocalFireDepartment
 import androidx.compose.material.icons.filled.Map
@@ -32,6 +32,7 @@ fun ActivityScreen(
 ) {
     val scrollState = rememberScrollState()
     val activity = state.activity
+    val sources = activity?.sources?.joinToString(", ") ?: "Health Connect"
 
     Column(
         modifier = modifier
@@ -51,7 +52,7 @@ fun ActivityScreen(
                 color = TextPrimary
             )
             GlassPill(
-                text = "Daily Total",
+                text = if (activity?.sources?.isNotEmpty() == true) "Aggregated (${activity.sources.size})" else "Health Connect",
                 dotColor = EnergyAmber
             )
         }
@@ -64,9 +65,10 @@ fun ActivityScreen(
             title = "Total Steps",
             value = stepsStr,
             unit = if (stepsStr != null) "steps" else null,
-            icon = Icons.Default.DirectionsWalk,
+            icon = Icons.AutoMirrored.Filled.DirectionsWalk,
             accentColor = VayuCyan,
-            timestamp = activity?.lastUpdated?.let { "Last active at ${viewModel.formatTime(it)}" }
+            timestamp = "De-duplicated Health Connect total",
+            source = sources
         )
 
         Spacer(modifier = Modifier.height(14.dp))
@@ -78,21 +80,23 @@ fun ActivityScreen(
         ) {
             val activeCalStr = activity?.activeCaloriesKcal?.let { "%.0f".format(it) }
             MetricTile(
-                title = "Active Burn",
+                title = "Active Energy",
                 value = activeCalStr,
                 unit = if (activeCalStr != null) "kcal" else null,
                 icon = Icons.Default.LocalFireDepartment,
                 accentColor = EnergyAmber,
+                source = sources,
                 modifier = Modifier.weight(1f)
             )
 
             val totalCalStr = activity?.totalCaloriesKcal?.let { "%.0f".format(it) }
             MetricTile(
-                title = "Total Burn",
+                title = "Total Energy",
                 value = totalCalStr,
                 unit = if (totalCalStr != null) "kcal" else null,
                 icon = Icons.Default.LocalFireDepartment,
                 accentColor = VayuBlue,
+                source = sources,
                 modifier = Modifier.weight(1f)
             )
         }
@@ -102,11 +106,12 @@ fun ActivityScreen(
         // Distance Tile
         val distKm = activity?.distanceMeters?.let { "%.2f".format(it / 1000.0) }
         MetricTile(
-            title = "Estimated Distance",
+            title = "Distance",
             value = distKm,
             unit = if (distKm != null) "km" else null,
             icon = Icons.Default.Map,
-            accentColor = RespirationTeal
+            accentColor = RespirationTeal,
+            source = sources
         )
 
         Spacer(modifier = Modifier.height(14.dp))
@@ -125,7 +130,7 @@ fun ActivityScreen(
                 )
                 Spacer(modifier = Modifier.width(10.dp))
                 Text(
-                    text = "WHOOP Strain and Google cardio scores are synthetic index calculations. Vayu keeps your data pure by displaying true recorded caloric expenditure and step sensor records directly.",
+                    text = "Activity totals are queried via Health Connect's Aggregate API to prevent double-counting across connected fitness trackers. No synthetic strain scores are calculated.",
                     fontSize = 12.sp,
                     color = TextMuted,
                     lineHeight = 17.sp

@@ -22,6 +22,8 @@ import com.vayu.health.data.model.HealthDashboardState
 import com.vayu.health.ui.components.GlassCard
 import com.vayu.health.ui.components.GlassPill
 import com.vayu.health.ui.components.MetricTile
+import com.vayu.health.ui.components.SmoothWaveChart
+import com.vayu.health.ui.components.WavePoint
 import com.vayu.health.ui.theme.*
 import com.vayu.health.ui.viewmodel.HealthDashboardViewModel
 
@@ -59,105 +61,182 @@ fun HeartVitalsScreen(
         Spacer(modifier = Modifier.height(18.dp))
 
         // Resting Heart Rate Tile
-        val rhrVal = state.restingHeartRate?.beatsPerMinute?.toString()
+        val rhr = state.restingHeartRate
         MetricTile(
             title = "Resting Heart Rate",
-            value = rhrVal,
-            unit = if (rhrVal != null) "bpm" else null,
+            value = rhr?.beatsPerMinute?.toString(),
+            unit = if (rhr != null) "bpm" else null,
             icon = Icons.Default.Favorite,
             accentColor = HeartCrimson,
-            timestamp = state.restingHeartRate?.let { "Recorded at ${viewModel.formatTime(it.timestamp)}" }
+            timestamp = rhr?.let { "Recorded at ${viewModel.formatTime(it.timestamp)}" },
+            source = rhr?.sourcePackage ?: "Health Connect"
         )
 
         Spacer(modifier = Modifier.height(14.dp))
 
         // HRV (RMSSD) Tile
-        val hrvVal = state.hrv?.let { "%.1f".format(it.rmssdMillis) }
+        val hrv = state.hrv
         MetricTile(
             title = "Heart Rate Variability (RMSSD)",
-            value = hrvVal,
-            unit = if (hrvVal != null) "ms" else null,
+            value = hrv?.let { "%.1f".format(it.rmssdMillis) },
+            unit = if (hrv != null) "ms" else null,
             icon = Icons.Default.Timeline,
             accentColor = HrvEmerald,
-            timestamp = state.hrv?.let { "Recorded at ${viewModel.formatTime(it.timestamp)}" }
+            timestamp = hrv?.let { "Recorded at ${viewModel.formatTime(it.timestamp)}" },
+            source = hrv?.sourcePackage ?: "Health Connect"
         )
 
         Spacer(modifier = Modifier.height(14.dp))
 
-        // Heart Rate Range & Samples
+        // Heart Rate Continuous Samples
         val hr = state.heartRate
-        if (hr != null) {
-            GlassCard(modifier = Modifier.fillMaxWidth()) {
-                Column {
+        GlassCard(modifier = Modifier.fillMaxWidth()) {
+            Column {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column {
+                        Text(
+                            text = "HEART RATE SAMPLES (${hr?.samples?.size ?: 0})",
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            color = TextSecondary,
+                            letterSpacing = 1.sp
+                        )
+                        Text(
+                            text = hr?.sourcePackage ?: "Health Connect",
+                            fontSize = 10.sp,
+                            color = TextMuted
+                        )
+                    }
+
+                    if (hr?.latestBpm != null) {
+                        Text(
+                            text = "${hr.latestBpm} bpm",
+                            fontSize = 16.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = HeartCrimson
+                        )
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(12.dp))
+
+                if (hr != null && hr.samples.isNotEmpty()) {
+                    val wavePoints = hr.samples.map {
+                        WavePoint(xLabel = viewModel.formatTime(it.time), value = it.beatsPerMinute.toFloat())
+                    }
+                    SmoothWaveChart(
+                        points = wavePoints,
+                        lineColor = HeartCrimson,
+                        chartHeight = 90.dp
+                    )
+
+                    Spacer(modifier = Modifier.height(12.dp))
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceAround
+                    ) {
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            Text(text = "MIN", fontSize = 10.sp, color = TextMuted)
+                            Text(text = hr.minBpm?.let { "$it bpm" } ?: "--", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = TextPrimary)
+                        }
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            Text(text = "AVERAGE", fontSize = 10.sp, color = TextMuted)
+                            Text(text = hr.averageBpm?.let { "$it bpm" } ?: "--", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = TextPrimary)
+                        }
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            Text(text = "MAX", fontSize = 10.sp, color = TextMuted)
+                            Text(text = hr.maxBpm?.let { "$it bpm" } ?: "--", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = TextPrimary)
+                        }
+                    }
+                } else {
+                    Text("No heart rate sample records available today", fontSize = 12.sp, color = TextMuted)
+                }
+            }
+        }
+
+        Spacer(modifier = Modifier.height(14.dp))
+
+        // Respiration & Oxygen
+        val resp = state.respiratory
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            val respRate = resp?.breathsPerMinute
+            MetricTile(
+                title = "Respiratory Rate",
+                value = respRate?.let { "%.1f".format(it) },
+                unit = if (respRate != null) "brpm" else null,
+                icon = Icons.Default.Air,
+                accentColor = RespirationTeal,
+                source = resp?.sourcePackage ?: "Health Connect",
+                modifier = Modifier.weight(1f)
+            )
+
+            val spo2 = resp?.spo2Percentage
+            MetricTile(
+                title = "Blood Oxygen",
+                value = spo2?.let { "%.1f%%".format(it) },
+                icon = Icons.Default.Thermostat,
+                accentColor = Spo2Blue,
+                source = resp?.sourcePackage ?: "Health Connect",
+                modifier = Modifier.weight(1f)
+            )
+        }
+
+        Spacer(modifier = Modifier.height(14.dp))
+
+        // Skin Temperature
+        val skinTemp = resp?.skinTemperature
+        GlassCard(modifier = Modifier.fillMaxWidth()) {
+            Column {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
                     Text(
-                        text = "HEART RATE SAMPLES (${hr.samplesCount})",
+                        text = "SKIN TEMPERATURE",
                         fontSize = 11.sp,
                         fontWeight = FontWeight.SemiBold,
                         color = TextSecondary,
                         letterSpacing = 1.sp
                     )
-                    Spacer(modifier = Modifier.height(14.dp))
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween
-                    ) {
-                        Column {
-                            Text(text = "MIN", fontSize = 11.sp, color = TextMuted)
-                            Text(
-                                text = hr.minBpm?.let { "$it bpm" } ?: "--",
-                                fontSize = 18.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = TextPrimary
-                            )
-                        }
-                        Column {
-                            Text(text = "LATEST", fontSize = 11.sp, color = TextMuted)
-                            Text(
-                                text = hr.latestBpm?.let { "$it bpm" } ?: "--",
-                                fontSize = 18.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = HeartCrimson
-                            )
-                        }
-                        Column {
-                            Text(text = "MAX", fontSize = 11.sp, color = TextMuted)
-                            Text(
-                                text = hr.maxBpm?.let { "$it bpm" } ?: "--",
-                                fontSize = 18.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = TextPrimary
-                            )
-                        }
-                    }
+                    Text(
+                        text = skinTemp?.sourcePackage ?: "Health Connect",
+                        fontSize = 10.sp,
+                        color = TextMuted
+                    )
+                }
+
+                Spacer(modifier = Modifier.height(8.dp))
+
+                if (!state.isSkinTemperatureSupported) {
+                    Text("Skin temperature feature is not supported on this device's Health Connect version", fontSize = 12.sp, color = TextMuted)
+                } else if (skinTemp != null) {
+                    val avg = skinTemp.averageDeltaCelsius
+                    val sign = if (avg != null && avg >= 0) "+" else ""
+                    Text(
+                        text = avg?.let { "$sign${"%.2f".format(it)} °C avg deviation" } ?: "Data unavailable",
+                        fontSize = 18.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = SkinTempPurple
+                    )
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Text(
+                        text = "Deltas count: ${skinTemp.deltasCount}${skinTemp.baselineCelsius?.let { " • Baseline: %.1f °C".format(it) } ?: ""}",
+                        fontSize = 11.sp,
+                        color = TextMuted
+                    )
+                } else {
+                    Text("Data unavailable", fontSize = 16.sp, fontWeight = FontWeight.Bold, color = TextUnavailable)
+                    Text("No skin temperature records in the active window", fontSize = 11.sp, color = TextMuted)
                 }
             }
-            Spacer(modifier = Modifier.height(14.dp))
-        }
-
-        // Respiration & Oxygen
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(12.dp)
-        ) {
-            val respVal = state.respiratory?.breathsPerMinute?.let { "%.1f".format(it) }
-            MetricTile(
-                title = "Respiratory Rate",
-                value = respVal,
-                unit = if (respVal != null) "brpm" else null,
-                icon = Icons.Default.Air,
-                accentColor = RespirationTeal,
-                modifier = Modifier.weight(1f)
-            )
-
-            val skinTempVal = state.respiratory?.skinTempDeviationCelsius?.let { "${if (it >= 0) "+" else ""}${"%.2f".format(it)}" }
-            MetricTile(
-                title = "Skin Temp Dev",
-                value = skinTempVal,
-                unit = if (skinTempVal != null) "°C" else null,
-                icon = Icons.Default.Thermostat,
-                accentColor = SkinTempPurple,
-                modifier = Modifier.weight(1f)
-            )
         }
 
         Spacer(modifier = Modifier.height(14.dp))
@@ -176,7 +255,7 @@ fun HeartVitalsScreen(
                 )
                 Spacer(modifier = Modifier.width(10.dp))
                 Text(
-                    text = "Google Readiness & Cardio Load scores are proprietary formulas not exported to Health Connect. Vayu provides the exact underlying RMSSD HRV and Resting HR without synthetic adjustments.",
+                    text = "Vayu displays pure recorded biometric records without proprietary readiness or recovery interpretations.",
                     fontSize = 12.sp,
                     color = TextMuted,
                     lineHeight = 17.sp

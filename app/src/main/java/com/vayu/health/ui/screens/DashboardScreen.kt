@@ -3,7 +3,6 @@ package com.vayu.health.ui.screens
 import androidx.compose.animation.*
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
@@ -14,6 +13,7 @@ import androidx.compose.material.icons.filled.ArrowDownward
 import androidx.compose.material.icons.filled.ArrowUpward
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -21,7 +21,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
-import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -29,14 +28,15 @@ import com.vayu.health.data.model.HealthDashboardState
 import com.vayu.health.ui.components.*
 import com.vayu.health.ui.theme.*
 import com.vayu.health.ui.viewmodel.HealthDashboardViewModel
+import java.time.format.DateTimeFormatter
 
 enum class DashboardCardId {
-    READINESS_RECOVERY,
-    SLEEP_DURATION,
-    STEPS_STRAIN,
-    SLEEP_BAR_CHART,
+    SLEEP_SESSION,
+    DAILY_ACTIVITY,
     HEART_RATE_CURVE,
-    HRV_SPO2_DUAL
+    RESTING_HR_AND_HRV,
+    SLEEP_HISTORY_7_DAYS,
+    RESPIRATORY_AND_TEMP
 }
 
 @Composable
@@ -48,16 +48,15 @@ fun DashboardScreen(
     val scrollState = rememberScrollState()
     var isEditMode by remember { mutableStateOf(false) }
 
-    // Reorderable cards order
     var cardOrder by remember {
         mutableStateOf(
             listOf(
-                DashboardCardId.READINESS_RECOVERY,
-                DashboardCardId.SLEEP_DURATION,
-                DashboardCardId.STEPS_STRAIN,
-                DashboardCardId.SLEEP_BAR_CHART,
+                DashboardCardId.SLEEP_SESSION,
+                DashboardCardId.DAILY_ACTIVITY,
                 DashboardCardId.HEART_RATE_CURVE,
-                DashboardCardId.HRV_SPO2_DUAL
+                DashboardCardId.RESTING_HR_AND_HRV,
+                DashboardCardId.SLEEP_HISTORY_7_DAYS,
+                DashboardCardId.RESPIRATORY_AND_TEMP
             )
         )
     }
@@ -68,7 +67,7 @@ fun DashboardScreen(
             .verticalScroll(scrollState)
             .padding(horizontal = 16.dp, vertical = 12.dp)
     ) {
-        // Top Header with Edit Button (One UI 9 Style)
+        // Top Header
         Row(
             modifier = Modifier
                 .fillMaxWidth()
@@ -78,7 +77,7 @@ fun DashboardScreen(
         ) {
             Column {
                 Text(
-                    text = "WEDNESDAY, OCT 14",
+                    text = viewModel.getFormattedDate(),
                     fontSize = 11.sp,
                     fontWeight = FontWeight.Bold,
                     color = TextMuted,
@@ -93,28 +92,44 @@ fun DashboardScreen(
                 )
             }
 
-            // Top-right Edit button
-            Button(
-                onClick = { isEditMode = !isEditMode },
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = if (isEditMode) VayuCyan else Color(0x1AFFFFFF),
-                    contentColor = if (isEditMode) SpaceBlack else TextPrimary
-                ),
-                shape = RoundedCornerShape(20.dp),
-                contentPadding = PaddingValues(horizontal = 14.dp, vertical = 6.dp),
-                modifier = Modifier.height(34.dp)
-            ) {
-                Icon(
-                    imageVector = if (isEditMode) Icons.Default.Check else Icons.Default.Edit,
-                    contentDescription = "Edit Layout",
-                    modifier = Modifier.size(14.dp)
-                )
-                Spacer(modifier = Modifier.width(6.dp))
-                Text(
-                    text = if (isEditMode) "Done" else "Edit",
-                    fontSize = 12.sp,
-                    fontWeight = FontWeight.Bold
-                )
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                IconButton(
+                    onClick = { viewModel.loadMetrics() },
+                    modifier = Modifier
+                        .size(34.dp)
+                        .clip(CircleShape)
+                        .background(Color(0x1AFFFFFF))
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Refresh,
+                        contentDescription = "Refresh",
+                        tint = TextPrimary,
+                        modifier = Modifier.size(16.dp)
+                    )
+                }
+
+                Button(
+                    onClick = { isEditMode = !isEditMode },
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = if (isEditMode) VayuCyan else Color(0x1AFFFFFF),
+                        contentColor = if (isEditMode) SpaceBlack else TextPrimary
+                    ),
+                    shape = RoundedCornerShape(20.dp),
+                    contentPadding = PaddingValues(horizontal = 14.dp, vertical = 6.dp),
+                    modifier = Modifier.height(34.dp)
+                ) {
+                    Icon(
+                        imageVector = if (isEditMode) Icons.Default.Check else Icons.Default.Edit,
+                        contentDescription = "Edit Layout",
+                        modifier = Modifier.size(14.dp)
+                    )
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text(
+                        text = if (isEditMode) "Done" else "Edit",
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
             }
         }
 
@@ -138,9 +153,28 @@ fun DashboardScreen(
             }
         }
 
+        // Error banners if any
+        if (state.errorMessages.isNotEmpty()) {
+            Spacer(modifier = Modifier.height(6.dp))
+            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                state.errorMessages.forEach { err ->
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(10.dp))
+                            .background(Color(0x20FF3366))
+                            .border(0.5.dp, HeartCrimson.copy(alpha = 0.5f), RoundedCornerShape(10.dp))
+                            .padding(horizontal = 12.dp, vertical = 8.dp)
+                    ) {
+                        Text(text = err, fontSize = 11.sp, color = TextPrimary)
+                    }
+                }
+            }
+        }
+
         Spacer(modifier = Modifier.height(10.dp))
 
-        // Render each card according to user's order
+        // Cards list
         cardOrder.forEachIndexed { index, cardId ->
             val cardModifier = if (isEditMode) {
                 Modifier
@@ -155,27 +189,26 @@ fun DashboardScreen(
 
             Box(modifier = cardModifier) {
                 when (cardId) {
-                    DashboardCardId.READINESS_RECOVERY -> {
-                        ReadinessRecoveryCard(state = state)
+                    DashboardCardId.SLEEP_SESSION -> {
+                        SleepSessionCard(state = state, viewModel = viewModel)
                     }
-                    DashboardCardId.SLEEP_DURATION -> {
-                        SleepDurationCard(state = state, viewModel = viewModel)
-                    }
-                    DashboardCardId.STEPS_STRAIN -> {
-                        StepsStrainCard(state = state)
-                    }
-                    DashboardCardId.SLEEP_BAR_CHART -> {
-                        SleepHistoryBarCard()
+                    DashboardCardId.DAILY_ACTIVITY -> {
+                        DailyActivityCard(state = state)
                     }
                     DashboardCardId.HEART_RATE_CURVE -> {
-                        HeartRateCurveCard(state = state)
+                        HeartRateCurveCard(state = state, viewModel = viewModel)
                     }
-                    DashboardCardId.HRV_SPO2_DUAL -> {
-                        HrvSpo2DualCard(state = state)
+                    DashboardCardId.RESTING_HR_AND_HRV -> {
+                        RestingHrAndHrvCard(state = state)
+                    }
+                    DashboardCardId.SLEEP_HISTORY_7_DAYS -> {
+                        SleepHistory7DaysCard(state = state)
+                    }
+                    DashboardCardId.RESPIRATORY_AND_TEMP -> {
+                        RespiratoryAndTempCard(state = state)
                     }
                 }
 
-                // Edit reorder arrows overlay
                 if (isEditMode) {
                     Row(
                         modifier = Modifier
@@ -224,381 +257,516 @@ fun DashboardScreen(
     }
 }
 
-// CARD 1: Readiness Score / Recovery (WHOOP)
+// CARD 1: Authentic Sleep Session & Stages
 @Composable
-fun ReadinessRecoveryCard(state: HealthDashboardState) {
+fun SleepSessionCard(state: HealthDashboardState, viewModel: HealthDashboardViewModel) {
+    val sleep = state.sleep
+
     GlassCard(
         modifier = Modifier.fillMaxWidth(),
         backgroundColor = Color(0xFF0E1015),
         borderBrush = SolidColor(Color(0x18FFFFFF))
     ) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(16.dp)
-        ) {
-            // Distinct Circle Dial for Readiness
-            Box(
-                modifier = Modifier.size(90.dp),
-                contentAlignment = Alignment.Center
+        Column {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                CircularProgressRing(
-                    progress = 0.75f,
-                    ringColor = HrvEmerald,
-                    strokeWidth = 8.dp,
-                    centerValue = "75%",
-                    modifier = Modifier.fillMaxSize()
-                )
-            }
-
-            // Labels with WHOOP Translation
-            Column(modifier = Modifier.weight(1f)) {
                 Text(
-                    text = "READINESS SCORE",
-                    fontSize = 12.sp,
+                    text = "SLEEP SESSION",
+                    fontSize = 11.sp,
                     fontWeight = FontWeight.Bold,
-                    color = TextSecondary,
+                    color = TextMuted,
                     letterSpacing = 1.sp
                 )
                 Text(
-                    text = "Recovery (WHOOP)",
-                    fontSize = 12.sp,
-                    fontWeight = FontWeight.SemiBold,
+                    text = sleep?.sourcePackage ?: "Health Connect",
+                    fontSize = 10.sp,
                     color = TextMuted
                 )
-                Spacer(modifier = Modifier.height(8.dp))
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Box(modifier = Modifier.size(6.dp).clip(CircleShape).background(HrvEmerald))
-                    Spacer(modifier = Modifier.width(6.dp))
-                    Text(
-                        text = "Optimal parasympathetic state",
-                        fontSize = 11.sp,
-                        color = HrvEmerald,
-                        fontWeight = FontWeight.Medium
-                    )
+            }
+
+            Spacer(modifier = Modifier.height(10.dp))
+
+            if (sleep != null) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(16.dp)
+                ) {
+                    val actualMins = sleep.actualSleepDurationMinutes
+                    val displayMins = actualMins ?: sleep.sessionElapsedMinutes
+
+                    Box(
+                        modifier = Modifier.size(90.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        CircularProgressRing(
+                            progress = (displayMins / 480f).coerceIn(0.05f, 1f),
+                            ringColor = Color(0xFF818CF8),
+                            strokeWidth = 8.dp,
+                            centerValue = "${displayMins / 60}h ${displayMins % 60}m",
+                            modifier = Modifier.fillMaxSize()
+                        )
+                    }
+
+                    Column(modifier = Modifier.weight(1f)) {
+                        if (actualMins != null) {
+                            Text(
+                                text = "Actual Sleep: ${actualMins / 60}h ${actualMins % 60}m",
+                                fontSize = 13.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = TextPrimary
+                            )
+                            Text(
+                                text = "Session Elapsed: ${sleep.sessionElapsedMinutes / 60}h ${sleep.sessionElapsedMinutes % 60}m",
+                                fontSize = 11.sp,
+                                color = TextSecondary
+                            )
+                        } else {
+                            Text(
+                                text = "Session Elapsed: ${sleep.sessionElapsedMinutes / 60}h ${sleep.sessionElapsedMinutes % 60}m",
+                                fontSize = 13.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = TextPrimary
+                            )
+                            Text(
+                                text = "No sleep stage records reported",
+                                fontSize = 11.sp,
+                                color = TextMuted
+                            )
+                        }
+
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text(
+                            text = "Start: ${viewModel.formatTime(sleep.startTime)} • End: ${viewModel.formatTime(sleep.endTime)}",
+                            fontSize = 10.sp,
+                            color = TextMuted
+                        )
+                    }
                 }
+
+                if (sleep.stages.isNotEmpty()) {
+                    Spacer(modifier = Modifier.height(12.dp))
+                    SleepStageBar(sleep = sleep)
+                }
+            } else {
                 Text(
-                    text = "Direct from Health Connect",
-                    fontSize = 10.sp,
-                    color = TextMuted.copy(alpha = 0.6f)
+                    text = "Data unavailable",
+                    fontSize = 18.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = TextUnavailable
+                )
+                Text(
+                    text = "No sleep session recorded in the past 24 hours",
+                    fontSize = 11.sp,
+                    color = TextMuted,
+                    modifier = Modifier.padding(top = 2.dp)
                 )
             }
         }
     }
 }
 
-// CARD 2: Sleep Duration / Sleep Performance (WHOOP)
+// CARD 2: Daily Activity (De-duplicated Health Connect Aggregates)
 @Composable
-fun SleepDurationCard(state: HealthDashboardState, viewModel: HealthDashboardViewModel) {
-    val durationMins = state.sleep?.totalDurationMinutes ?: 468L
-    val h = durationMins / 60
-    val m = durationMins % 60
+fun DailyActivityCard(state: HealthDashboardState) {
+    val activity = state.activity
 
     GlassCard(
         modifier = Modifier.fillMaxWidth(),
         backgroundColor = Color(0xFF0E1015),
         borderBrush = SolidColor(Color(0x18FFFFFF))
     ) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(16.dp)
-        ) {
-            // Distinct Circle Dial for Sleep
-            Box(
-                modifier = Modifier.size(90.dp),
-                contentAlignment = Alignment.Center
+        Column {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                CircularProgressRing(
-                    progress = (durationMins / 480f).coerceIn(0.1f, 1f),
-                    ringColor = Color(0xFF818CF8),
-                    strokeWidth = 8.dp,
-                    centerValue = "${h}h ${m}m",
-                    modifier = Modifier.fillMaxSize()
+                Text(
+                    text = "DAILY ACTIVITY TOTALS",
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = TextMuted,
+                    letterSpacing = 1.sp
+                )
+                val sourcesLabel = if (activity?.sources?.isNotEmpty() == true) {
+                    if (activity.sources.size == 1) activity.sources.first() else "Mixed Sources (${activity.sources.size})"
+                } else {
+                    "Health Connect"
+                }
+                Text(
+                    text = sourcesLabel,
+                    fontSize = 10.sp,
+                    color = TextMuted
                 )
             }
 
-            // Labels with WHOOP Translation
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = "SLEEP DURATION",
-                    fontSize = 12.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = TextSecondary,
-                    letterSpacing = 1.sp
-                )
-                Text(
-                    text = "Sleep Performance (WHOOP)",
-                    fontSize = 12.sp,
-                    fontWeight = FontWeight.SemiBold,
-                    color = TextMuted
-                )
-                Spacer(modifier = Modifier.height(6.dp))
-                Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    Text("Bed: 11:27 PM", fontSize = 11.sp, color = TextSecondary)
-                    Text("Wake: 07:15 AM", fontSize = 11.sp, color = TextSecondary)
+            Spacer(modifier = Modifier.height(10.dp))
+
+            if (activity != null) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(16.dp)
+                ) {
+                    val steps = activity.steps
+                    if (steps != null) {
+                        Box(
+                            modifier = Modifier.size(90.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            CircularProgressRing(
+                                progress = (steps / 10000f).coerceIn(0.05f, 1f),
+                                ringColor = VayuCyan,
+                                strokeWidth = 8.dp,
+                                centerValue = "%,d".format(steps),
+                                centerLabel = "STEPS",
+                                modifier = Modifier.fillMaxSize()
+                            )
+                        }
+                    }
+
+                    Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Text("Active Energy:", fontSize = 12.sp, color = TextSecondary)
+                            Text(
+                                text = activity.activeCaloriesKcal?.let { "%.0f kcal".format(it) } ?: "Data unavailable",
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = if (activity.activeCaloriesKcal != null) EnergyAmber else TextMuted
+                            )
+                        }
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Text("Total Energy:", fontSize = 12.sp, color = TextSecondary)
+                            Text(
+                                text = activity.totalCaloriesKcal?.let { "%.0f kcal".format(it) } ?: "Data unavailable",
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = if (activity.totalCaloriesKcal != null) TextPrimary else TextMuted
+                            )
+                        }
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Text("Distance:", fontSize = 12.sp, color = TextSecondary)
+                            Text(
+                                text = activity.distanceMeters?.let { "%.2f km".format(it / 1000.0) } ?: "Data unavailable",
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = if (activity.distanceMeters != null) TextPrimary else TextMuted
+                            )
+                        }
+                    }
                 }
-                Spacer(modifier = Modifier.height(6.dp))
-                // Mini stage preview
+            } else {
+                Text(
+                    text = "Data unavailable",
+                    fontSize = 18.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = TextUnavailable
+                )
+                Text(
+                    text = "No activity records found today",
+                    fontSize = 11.sp,
+                    color = TextMuted,
+                    modifier = Modifier.padding(top = 2.dp)
+                )
+            }
+        }
+    }
+}
+
+// CARD 3: Authentic Heart Rate Wave Curve
+@Composable
+fun HeartRateCurveCard(state: HealthDashboardState, viewModel: HealthDashboardViewModel) {
+    val hr = state.heartRate
+
+    GlassCard(
+        modifier = Modifier.fillMaxWidth(),
+        backgroundColor = Color(0xFF0E1015),
+        borderBrush = SolidColor(Color(0x18FFFFFF))
+    ) {
+        Column {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column {
+                    Text(
+                        text = "HEART RATE SAMPLES",
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = TextMuted,
+                        letterSpacing = 1.sp
+                    )
+                    Text(
+                        text = hr?.sourcePackage ?: "Health Connect",
+                        fontSize = 10.sp,
+                        color = TextMuted
+                    )
+                }
+
+                if (hr?.latestBpm != null) {
+                    Row(verticalAlignment = Alignment.Bottom) {
+                        Text(text = "${hr.latestBpm}", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = HeartCrimson)
+                        Spacer(modifier = Modifier.width(3.dp))
+                        Text("bpm", fontSize = 11.sp, color = TextMuted)
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(10.dp))
+
+            if (hr != null && hr.samples.isNotEmpty()) {
+                val wavePoints = hr.samples.map { sample ->
+                    WavePoint(
+                        xLabel = viewModel.formatTime(sample.time),
+                        value = sample.beatsPerMinute.toFloat()
+                    )
+                }
+
+                SmoothWaveChart(
+                    points = wavePoints,
+                    lineColor = HeartCrimson,
+                    chartHeight = 85.dp
+                )
+
+                Spacer(modifier = Modifier.height(10.dp))
+
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(5.dp)
-                        .clip(RoundedCornerShape(3.dp))
+                        .border(0.5.dp, Color(0x10FFFFFF), RoundedCornerShape(10.dp))
+                        .padding(vertical = 6.dp),
+                    horizontalArrangement = Arrangement.SpaceAround
                 ) {
-                    Box(modifier = Modifier.weight(0.22f).fillMaxHeight().background(SleepDeep))
-                    Box(modifier = Modifier.weight(0.26f).fillMaxHeight().background(SleepRem))
-                    Box(modifier = Modifier.weight(0.44f).fillMaxHeight().background(SleepLight))
-                    Box(modifier = Modifier.weight(0.08f).fillMaxHeight().background(SleepAwake))
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Text("MIN", fontSize = 10.sp, color = TextMuted)
+                        Text(hr.minBpm?.let { "$it bpm" } ?: "--", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = TextPrimary)
+                    }
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Text("AVERAGE", fontSize = 10.sp, color = TextMuted)
+                        Text(hr.averageBpm?.let { "$it bpm" } ?: "--", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = TextPrimary)
+                    }
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Text("PEAK", fontSize = 10.sp, color = TextMuted)
+                        Text(hr.maxBpm?.let { "$it bpm" } ?: "--", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = HeartCrimson)
+                    }
                 }
-            }
-        }
-    }
-}
-
-// CARD 3: Daily Steps / Day Strain & Movement (WHOOP)
-@Composable
-fun StepsStrainCard(state: HealthDashboardState) {
-    val steps = state.activity?.steps ?: 8940L
-
-    GlassCard(
-        modifier = Modifier.fillMaxWidth(),
-        backgroundColor = Color(0xFF0E1015),
-        borderBrush = SolidColor(Color(0x18FFFFFF))
-    ) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(16.dp)
-        ) {
-            // Distinct Circle Dial for Steps
-            Box(
-                modifier = Modifier.size(90.dp),
-                contentAlignment = Alignment.Center
-            ) {
-                CircularProgressRing(
-                    progress = (steps / 10000f).coerceIn(0.1f, 1f),
-                    ringColor = VayuCyan,
-                    strokeWidth = 8.dp,
-                    centerValue = "%,d".format(steps),
-                    centerLabel = "89%",
-                    modifier = Modifier.fillMaxSize()
-                )
-            }
-
-            // Labels with WHOOP Translation
-            Column(modifier = Modifier.weight(1f)) {
+            } else {
                 Text(
-                    text = "DAILY STEPS",
-                    fontSize = 12.sp,
+                    text = "Data unavailable",
+                    fontSize = 18.sp,
                     fontWeight = FontWeight.Bold,
-                    color = TextSecondary,
-                    letterSpacing = 1.sp
+                    color = TextUnavailable
                 )
                 Text(
-                    text = "Day Strain / Movement (WHOOP)",
-                    fontSize = 12.sp,
-                    fontWeight = FontWeight.SemiBold,
-                    color = TextMuted
+                    text = "No heart rate records today",
+                    fontSize = 11.sp,
+                    color = TextMuted,
+                    modifier = Modifier.padding(top = 2.dp)
                 )
-                Spacer(modifier = Modifier.height(8.dp))
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween
-                ) {
-                    Column {
-                        Text("DISTANCE", fontSize = 10.sp, color = TextMuted)
-                        Text("6.42 km", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = TextPrimary)
-                    }
-                    Column {
-                        Text("ACTIVE BURN", fontSize = 10.sp, color = TextMuted)
-                        Text("540 kcal", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = EnergyAmber)
-                    }
-                }
             }
         }
     }
 }
 
-// CARD 4: 7-Day Bar Chart / Sleep Consistency (WHOOP)
+// CARD 4: Resting Heart Rate & HRV Dual Card
 @Composable
-fun SleepHistoryBarCard() {
-    GlassCard(
-        modifier = Modifier.fillMaxWidth(),
-        backgroundColor = Color(0xFF0E1015),
-        borderBrush = SolidColor(Color(0x18FFFFFF))
-    ) {
-        Column {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Column {
-                    Text(
-                        text = "SLEEP HISTORY (7 DAYS)",
-                        fontSize = 12.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = TextSecondary,
-                        letterSpacing = 1.sp
-                    )
-                    Text(
-                        text = "Sleep Consistency (WHOOP)",
-                        fontSize = 11.sp,
-                        fontWeight = FontWeight.SemiBold,
-                        color = TextMuted
-                    )
-                }
-
-                Box(
-                    modifier = Modifier
-                        .clip(RoundedCornerShape(6.dp))
-                        .background(Color(0x15818CF8))
-                        .border(0.5.dp, Color(0x30818CF8), RoundedCornerShape(6.dp))
-                        .padding(horizontal = 8.dp, vertical = 4.dp)
-                ) {
-                    Text("7h 34m avg", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color(0xFF818CF8))
-                }
-            }
-
-            Spacer(modifier = Modifier.height(14.dp))
-
-            MiniBarChart(
-                points = listOf(
-                    BarDataPoint("T", 6.8f),
-                    BarDataPoint("F", 7.4f),
-                    BarDataPoint("S", 8.4f),
-                    BarDataPoint("S", 8.8f),
-                    BarDataPoint("M", 7.0f),
-                    BarDataPoint("T", 6.4f),
-                    BarDataPoint("W", 7.8f, isHighlighted = true)
-                ),
-                primaryColor = Color(0xFF818CF8),
-                chartHeight = 85.dp
-            )
-        }
-    }
-}
-
-// CARD 5: Continuous Heart Rate Wave Curve / Resting Heart Rate (WHOOP)
-@Composable
-fun HeartRateCurveCard(state: HealthDashboardState) {
-    val rhr = state.restingHeartRate?.beatsPerMinute ?: 56L
-
-    GlassCard(
-        modifier = Modifier.fillMaxWidth(),
-        backgroundColor = Color(0xFF0E1015),
-        borderBrush = SolidColor(Color(0x18FFFFFF))
-    ) {
-        Column {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Column {
-                    Text(
-                        text = "HEART RATE VITALS",
-                        fontSize = 12.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = TextSecondary,
-                        letterSpacing = 1.sp
-                    )
-                    Text(
-                        text = "Resting Heart Rate (WHOOP)",
-                        fontSize = 11.sp,
-                        fontWeight = FontWeight.SemiBold,
-                        color = TextMuted
-                    )
-                }
-
-                Row(verticalAlignment = Alignment.Bottom) {
-                    Text("68", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = HeartCrimson)
-                    Spacer(modifier = Modifier.width(3.dp))
-                    Text("bpm", fontSize = 11.sp, color = TextMuted)
-                }
-            }
-
-            Spacer(modifier = Modifier.height(10.dp))
-
-            SmoothWaveChart(
-                points = listOf(
-                    WavePoint("12 AM", 48f),
-                    WavePoint("06 AM", 52f),
-                    WavePoint("12 PM", 82f),
-                    WavePoint("06 PM", 74f),
-                    WavePoint("NOW", 68f)
-                ),
-                lineColor = HeartCrimson,
-                chartHeight = 80.dp
-            )
-
-            Spacer(modifier = Modifier.height(10.dp))
-
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .border(0.5.dp, Color(0x10FFFFFF), RoundedCornerShape(10.dp))
-                    .padding(vertical = 6.dp),
-                horizontalArrangement = Arrangement.SpaceAround
-            ) {
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Text("MIN", fontSize = 10.sp, color = TextMuted)
-                    Text("48 bpm", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = TextPrimary)
-                }
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Text("RESTING HR", fontSize = 10.sp, color = TextMuted)
-                    Text("$rhr bpm", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = HeartCrimson)
-                }
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Text("PEAK", fontSize = 10.sp, color = TextMuted)
-                    Text("142 bpm", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = TextPrimary)
-                }
-            }
-        }
-    }
-}
-
-// CARD 6: HRV & Blood Oxygen Dual Card
-@Composable
-fun HrvSpo2DualCard(state: HealthDashboardState) {
-    val hrvVal = state.hrv?.rmssdMillis ?: 64.2
-    val spo2Val = state.respiratory?.spo2Percentage ?: 98.5
+fun RestingHrAndHrvCard(state: HealthDashboardState) {
+    val rhr = state.restingHeartRate
+    val hrv = state.hrv
 
     Row(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.spacedBy(10.dp)
     ) {
+        // Resting Heart Rate
         GlassCard(
             modifier = Modifier.weight(1f),
             backgroundColor = Color(0xFF0E1015),
             borderBrush = SolidColor(Color(0x18FFFFFF))
         ) {
             Column {
-                Text("HRV (RMSSD)", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = TextSecondary)
-                Text("HRV (WHOOP)", fontSize = 10.sp, color = TextMuted)
+                Text("RESTING HEART RATE", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = TextMuted, letterSpacing = 0.5.sp)
                 Spacer(modifier = Modifier.height(6.dp))
-                Row(verticalAlignment = Alignment.Bottom) {
-                    Text("%.1f".format(hrvVal), fontSize = 22.sp, fontWeight = FontWeight.Bold, color = HrvEmerald)
-                    Spacer(modifier = Modifier.width(3.dp))
-                    Text("ms", fontSize = 11.sp, color = TextMuted)
+                if (rhr != null) {
+                    Row(verticalAlignment = Alignment.Bottom) {
+                        Text("${rhr.beatsPerMinute}", fontSize = 24.sp, fontWeight = FontWeight.Bold, color = HeartCrimson)
+                        Spacer(modifier = Modifier.width(3.dp))
+                        Text("bpm", fontSize = 11.sp, color = TextMuted)
+                    }
+                    Text(rhr.sourcePackage, fontSize = 9.sp, color = TextMuted, maxLines = 1)
+                } else {
+                    Text("Data unavailable", fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = TextUnavailable)
+                    Text("No record today", fontSize = 10.sp, color = TextMuted)
                 }
             }
         }
 
+        // HRV RMSSD
         GlassCard(
             modifier = Modifier.weight(1f),
             backgroundColor = Color(0xFF0E1015),
             borderBrush = SolidColor(Color(0x18FFFFFF))
         ) {
             Column {
-                Text("BLOOD OXYGEN", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = TextSecondary)
-                Text("SpO₂ (WHOOP)", fontSize = 10.sp, color = TextMuted)
+                Text("HRV (RMSSD)", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = TextMuted, letterSpacing = 0.5.sp)
                 Spacer(modifier = Modifier.height(6.dp))
-                Row(verticalAlignment = Alignment.Bottom) {
-                    Text("%.1f".format(spo2Val), fontSize = 22.sp, fontWeight = FontWeight.Bold, color = VayuCyan)
-                    Spacer(modifier = Modifier.width(3.dp))
-                    Text("%", fontSize = 11.sp, color = TextMuted)
+                if (hrv != null) {
+                    Row(verticalAlignment = Alignment.Bottom) {
+                        Text("%.1f".format(hrv.rmssdMillis), fontSize = 24.sp, fontWeight = FontWeight.Bold, color = HrvEmerald)
+                        Spacer(modifier = Modifier.width(3.dp))
+                        Text("ms", fontSize = 11.sp, color = TextMuted)
+                    }
+                    Text(hrv.sourcePackage, fontSize = 9.sp, color = TextMuted, maxLines = 1)
+                } else {
+                    Text("Data unavailable", fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = TextUnavailable)
+                    Text("No record today", fontSize = 10.sp, color = TextMuted)
+                }
+            }
+        }
+    }
+}
+
+// CARD 5: 7-Day Sleep History (Strictly from recorded sessions)
+@Composable
+fun SleepHistory7DaysCard(state: HealthDashboardState) {
+    val history = state.dailySleepHistory
+
+    GlassCard(
+        modifier = Modifier.fillMaxWidth(),
+        backgroundColor = Color(0xFF0E1015),
+        borderBrush = SolidColor(Color(0x18FFFFFF))
+    ) {
+        Column {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = "SLEEP HISTORY (7 DAYS)",
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = TextMuted,
+                    letterSpacing = 1.sp
+                )
+                if (history.isNotEmpty()) {
+                    val avgMinutes = history.map { it.actualSleepMinutes }.average().toLong()
+                    Text(
+                        text = "Avg: ${avgMinutes / 60}h ${avgMinutes % 60}m",
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = Color(0xFF818CF8)
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.height(12.dp))
+
+            if (history.isNotEmpty()) {
+                val dayFormatter = DateTimeFormatter.ofPattern("E")
+                val barPoints = history.map { summary ->
+                    BarDataPoint(
+                        label = summary.date.format(dayFormatter).take(1),
+                        value = summary.actualSleepMinutes / 60f,
+                        formattedValue = "${summary.actualSleepMinutes / 60}h ${summary.actualSleepMinutes % 60}m"
+                    )
+                }
+
+                MiniBarChart(
+                    points = barPoints,
+                    primaryColor = Color(0xFF818CF8),
+                    chartHeight = 85.dp
+                )
+            } else {
+                Text(
+                    text = "Data unavailable",
+                    fontSize = 16.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    color = TextUnavailable
+                )
+                Text(
+                    text = "No sleep history recorded for the past 7 days",
+                    fontSize = 11.sp,
+                    color = TextMuted,
+                    modifier = Modifier.padding(top = 2.dp)
+                )
+            }
+        }
+    }
+}
+
+// CARD 6: Blood Oxygen & Skin Temperature
+@Composable
+fun RespiratoryAndTempCard(state: HealthDashboardState) {
+    val resp = state.respiratory
+    val spo2 = resp?.spo2Percentage
+    val skinTemp = resp?.skinTemperature
+
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(10.dp)
+    ) {
+        // SpO2
+        GlassCard(
+            modifier = Modifier.weight(1f),
+            backgroundColor = Color(0xFF0E1015),
+            borderBrush = SolidColor(Color(0x18FFFFFF))
+        ) {
+            Column {
+                Text("BLOOD OXYGEN (SpO₂)", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = TextMuted, letterSpacing = 0.5.sp)
+                Spacer(modifier = Modifier.height(6.dp))
+                if (spo2 != null) {
+                    Row(verticalAlignment = Alignment.Bottom) {
+                        Text("%.1f".format(spo2), fontSize = 24.sp, fontWeight = FontWeight.Bold, color = VayuCyan)
+                        Spacer(modifier = Modifier.width(3.dp))
+                        Text("%", fontSize = 11.sp, color = TextMuted)
+                    }
+                    Text(resp.sourcePackage ?: "Health Connect", fontSize = 9.sp, color = TextMuted, maxLines = 1)
+                } else {
+                    Text("Data unavailable", fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = TextUnavailable)
+                    Text("No record today", fontSize = 10.sp, color = TextMuted)
+                }
+            }
+        }
+
+        // Skin Temp
+        GlassCard(
+            modifier = Modifier.weight(1f),
+            backgroundColor = Color(0xFF0E1015),
+            borderBrush = SolidColor(Color(0x18FFFFFF))
+        ) {
+            Column {
+                Text("SKIN TEMPERATURE", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = TextMuted, letterSpacing = 0.5.sp)
+                Spacer(modifier = Modifier.height(6.dp))
+                if (!state.isSkinTemperatureSupported) {
+                    Text("Unsupported", fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = TextMuted)
+                    Text("Feature unavailable", fontSize = 10.sp, color = TextMuted)
+                } else if (skinTemp?.averageDeltaCelsius != null) {
+                    val avg = skinTemp.averageDeltaCelsius
+                    val sign = if (avg >= 0) "+" else ""
+                    Row(verticalAlignment = Alignment.Bottom) {
+                        Text("$sign${"%.2f".format(avg)}", fontSize = 22.sp, fontWeight = FontWeight.Bold, color = SkinTempPurple)
+                        Spacer(modifier = Modifier.width(3.dp))
+                        Text("°C", fontSize = 11.sp, color = TextMuted)
+                    }
+                    Text(skinTemp.sourcePackage, fontSize = 9.sp, color = TextMuted, maxLines = 1)
+                } else {
+                    Text("Data unavailable", fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = TextUnavailable)
+                    Text("No record in window", fontSize = 10.sp, color = TextMuted)
                 }
             }
         }

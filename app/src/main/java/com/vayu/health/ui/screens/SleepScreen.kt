@@ -1,7 +1,6 @@
 package com.vayu.health.ui.screens
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -24,6 +23,7 @@ import com.vayu.health.data.model.SleepStageType
 import com.vayu.health.ui.components.GlassCard
 import com.vayu.health.ui.components.GlassPill
 import com.vayu.health.ui.components.MetricTile
+import com.vayu.health.ui.components.SleepOutOfBed
 import com.vayu.health.ui.components.SleepStageBar
 import com.vayu.health.ui.theme.*
 import com.vayu.health.ui.viewmodel.HealthDashboardViewModel
@@ -56,7 +56,7 @@ fun SleepScreen(
                 color = TextPrimary
             )
             GlassPill(
-                text = "Health Connect",
+                text = sleep?.sourcePackage ?: "Health Connect",
                 dotColor = SleepRem
             )
         }
@@ -64,20 +64,22 @@ fun SleepScreen(
         Spacer(modifier = Modifier.height(18.dp))
 
         // Total Duration Tile
-        val durationStr = sleep?.let { viewModel.formatDuration(it.totalDurationMinutes) }
+        val actualSleepStr = sleep?.actualSleepDurationMinutes?.let { viewModel.formatDuration(it) }
+        val sessionElapsedStr = sleep?.sessionElapsedMinutes?.let { viewModel.formatDuration(it) }
+
         MetricTile(
-            title = "Total Sleep Duration",
-            value = durationStr,
+            title = if (actualSleepStr != null) "Actual Sleep Duration" else "Session Elapsed Time",
+            value = actualSleepStr ?: sessionElapsedStr,
             icon = Icons.Default.Bedtime,
             accentColor = SleepRem,
             timestamp = sleep?.let { "Recorded by ${it.sourcePackage}" },
-            statusText = if (sleep != null) "Verified" else null
+            source = sleep?.sourcePackage ?: "Health Connect"
         )
 
         Spacer(modifier = Modifier.height(14.dp))
 
         if (sleep != null) {
-            // Sleep Timing Cards: Bedtime & Wake Time
+            // Timing Cards: Bedtime & Wake Time
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(12.dp)
@@ -85,7 +87,7 @@ fun SleepScreen(
                 GlassCard(modifier = Modifier.weight(1f)) {
                     Column {
                         Text(
-                            text = "BEDTIME",
+                            text = "SESSION START",
                             fontSize = 11.sp,
                             fontWeight = FontWeight.SemiBold,
                             color = TextSecondary,
@@ -94,7 +96,7 @@ fun SleepScreen(
                         Spacer(modifier = Modifier.height(6.dp))
                         Text(
                             text = viewModel.formatTime(sleep.startTime),
-                            fontSize = 22.sp,
+                            fontSize = 20.sp,
                             fontWeight = FontWeight.Bold,
                             color = TextPrimary
                         )
@@ -104,7 +106,7 @@ fun SleepScreen(
                 GlassCard(modifier = Modifier.weight(1f)) {
                     Column {
                         Text(
-                            text = "WAKE TIME",
+                            text = "SESSION END",
                             fontSize = 11.sp,
                             fontWeight = FontWeight.SemiBold,
                             color = TextSecondary,
@@ -113,7 +115,7 @@ fun SleepScreen(
                         Spacer(modifier = Modifier.height(6.dp))
                         Text(
                             text = viewModel.formatTime(sleep.endTime),
-                            fontSize = 22.sp,
+                            fontSize = 20.sp,
                             fontWeight = FontWeight.Bold,
                             color = TextPrimary
                         )
@@ -121,27 +123,46 @@ fun SleepScreen(
                 }
             }
 
-            Spacer(modifier = Modifier.height(14.dp))
-
-            // Stages Graph Card
-            GlassCard(modifier = Modifier.fillMaxWidth()) {
-                Column {
-                    Text(
-                        text = "STAGE BREAKDOWN",
-                        fontSize = 11.sp,
-                        fontWeight = FontWeight.SemiBold,
-                        color = TextSecondary,
-                        letterSpacing = 1.sp
-                    )
-                    Spacer(modifier = Modifier.height(14.dp))
-                    SleepStageBar(sleep = sleep)
+            if (actualSleepStr != null) {
+                Spacer(modifier = Modifier.height(14.dp))
+                GlassCard(modifier = Modifier.fillMaxWidth()) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Column {
+                            Text("TOTAL SESSION TIME", fontSize = 11.sp, color = TextMuted)
+                            Text("${sleep.sessionElapsedMinutes / 60}h ${sleep.sessionElapsedMinutes % 60}m", fontSize = 16.sp, fontWeight = FontWeight.Bold, color = TextPrimary)
+                        }
+                        Column(horizontalAlignment = Alignment.End) {
+                            Text("AWAKE / OUT OF BED", fontSize = 11.sp, color = TextMuted)
+                            Text("${sleep.awakeMinutes + sleep.outOfBedMinutes} min", fontSize = 16.sp, fontWeight = FontWeight.Bold, color = SleepAwake)
+                        }
+                    }
                 }
             }
 
             Spacer(modifier = Modifier.height(14.dp))
 
-            // Stage List Segments
+            // Stages Graph Card
             if (sleep.stages.isNotEmpty()) {
+                GlassCard(modifier = Modifier.fillMaxWidth()) {
+                    Column {
+                        Text(
+                            text = "STAGE BREAKDOWN",
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            color = TextSecondary,
+                            letterSpacing = 1.sp
+                        )
+                        Spacer(modifier = Modifier.height(14.dp))
+                        SleepStageBar(sleep = sleep)
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(14.dp))
+
+                // Stage List Segments
                 GlassCard(modifier = Modifier.fillMaxWidth()) {
                     Column {
                         Text(
@@ -153,18 +174,20 @@ fun SleepScreen(
                         )
                         Spacer(modifier = Modifier.height(12.dp))
 
-                        sleep.stages.take(8).forEach { stage ->
-                            val color = when (stage.stage) {
-                                SleepStageType.DEEP -> SleepDeep
-                                SleepStageType.REM -> SleepRem
-                                SleepStageType.LIGHT -> SleepLight
-                                SleepStageType.AWAKE -> SleepAwake
-                                SleepStageType.UNKNOWN -> TextMuted
+                        sleep.stages.forEach { stage ->
+                            val (color, name) = when (stage.stage) {
+                                SleepStageType.DEEP -> SleepDeep to "Deep Sleep"
+                                SleepStageType.REM -> SleepRem to "REM Sleep"
+                                SleepStageType.LIGHT -> SleepLight to "Light Sleep"
+                                SleepStageType.SLEEPING -> Color(0xFF4FC3F7) to "Sleeping (Generic)"
+                                SleepStageType.AWAKE -> SleepAwake to "Awake"
+                                SleepStageType.OUT_OF_BED -> SleepOutOfBed to "Out of Bed"
+                                SleepStageType.UNKNOWN -> TextMuted to "Unknown"
                             }
                             Row(
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .padding(vertical = 6.dp),
+                                    .padding(vertical = 5.dp),
                                 horizontalArrangement = Arrangement.SpaceBetween,
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
@@ -177,15 +200,15 @@ fun SleepScreen(
                                     )
                                     Spacer(modifier = Modifier.width(10.dp))
                                     Text(
-                                        text = stage.stage.name,
-                                        fontSize = 13.sp,
+                                        text = name,
+                                        fontSize = 12.sp,
                                         fontWeight = FontWeight.Medium,
                                         color = TextPrimary
                                     )
                                 }
                                 Text(
                                     text = "${stage.durationMinutes} min (${viewModel.formatTime(stage.startTime)} - ${viewModel.formatTime(stage.endTime)})",
-                                    fontSize = 12.sp,
+                                    fontSize = 11.sp,
                                     color = TextMuted
                                 )
                             }
@@ -211,7 +234,7 @@ fun SleepScreen(
                 )
                 Spacer(modifier = Modifier.width(10.dp))
                 Text(
-                    text = "Google's proprietary 0-100 Sleep Score is not exported to Health Connect. Vayu never fabricates a replacement score, presenting strictly your recorded stages and duration.",
+                    text = "Vayu visualizes only raw SleepSessionRecord intervals and stages from Health Connect. Proprietary sleep scores and calculated metrics are excluded.",
                     fontSize = 12.sp,
                     color = TextMuted,
                     lineHeight = 17.sp

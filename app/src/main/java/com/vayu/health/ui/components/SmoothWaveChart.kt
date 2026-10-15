@@ -29,9 +29,24 @@ fun SmoothWaveChart(
     lineColor: Color,
     modifier: Modifier = Modifier,
     chartHeight: Dp = 110.dp,
-    showGrid: Boolean = true
+    showGrid: Boolean = true,
+    emptyMessage: String = "No heart rate records today"
 ) {
-    if (points.size < 2) return
+    if (points.size < 2) {
+        Box(
+            modifier = modifier
+                .fillMaxWidth()
+                .height(chartHeight),
+            contentAlignment = Alignment.Center
+        ) {
+            Text(
+                text = emptyMessage,
+                fontSize = 12.sp,
+                color = TextMuted
+            )
+        }
+        return
+    }
 
     val minValue = points.minOf { it.value }
     val maxValue = points.maxOf { it.value }.coerceAtLeast(minValue + 1f)
@@ -46,7 +61,7 @@ fun SmoothWaveChart(
             val height = size.height
             val stepX = width / (points.size - 1)
 
-            // Optional grid lines
+            // Grid lines
             if (showGrid) {
                 val gridY1 = height * 0.25f
                 val gridY2 = height * 0.75f
@@ -101,7 +116,7 @@ fun SmoothWaveChart(
             fillPath.lineTo(coords.last().x, height)
             fillPath.close()
 
-            // Draw Area Gradient Fill
+            // Area Gradient Fill
             drawPath(
                 path = fillPath,
                 brush = Brush.verticalGradient(
@@ -113,7 +128,7 @@ fun SmoothWaveChart(
                 )
             )
 
-            // Draw Stroke Line
+            // Stroke Line
             drawPath(
                 path = linePath,
                 brush = Brush.horizontalGradient(
@@ -123,36 +138,37 @@ fun SmoothWaveChart(
                         lineColor.copy(alpha = 0.9f)
                     )
                 ),
-                style = Stroke(width = 3.dp.toPx(), cap = StrokeCap.Round)
+                style = Stroke(width = 2.5.dp.toPx(), cap = StrokeCap.Round)
             )
 
             // Highlight latest point with glowing dot
             val latest = coords.last()
             drawCircle(
                 color = lineColor.copy(alpha = 0.35f),
-                radius = 8.dp.toPx(),
+                radius = 7.dp.toPx(),
                 center = latest
             )
             drawCircle(
                 color = lineColor,
-                radius = 4.dp.toPx(),
+                radius = 3.5.dp.toPx(),
                 center = latest
             )
             drawCircle(
                 color = Color.White,
-                radius = 2.dp.toPx(),
+                radius = 1.8.dp.toPx(),
                 center = latest
             )
         }
 
         Spacer(modifier = Modifier.height(6.dp))
 
-        // Time / X labels
+        // Time / X labels (only show a few spaced labels if many samples)
+        val sampleStride = (points.size / 5).coerceAtLeast(1)
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.SpaceBetween
         ) {
-            points.forEach { p ->
+            points.filterIndexed { idx, _ -> idx % sampleStride == 0 || idx == points.size - 1 }.forEach { p ->
                 Text(
                     text = p.xLabel,
                     fontSize = 10.sp,

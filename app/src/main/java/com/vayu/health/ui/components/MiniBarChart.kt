@@ -15,11 +15,10 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.vayu.health.ui.theme.TextMuted
-import com.vayu.health.ui.theme.TextSecondary
 
 data class BarDataPoint(
     val label: String,
-    val value: Float, // 0.0f to 1.0f or raw
+    val value: Float,
     val formattedValue: String? = null,
     val isHighlighted: Boolean = false
 )
@@ -31,8 +30,25 @@ fun MiniBarChart(
     secondaryColor: Color = primaryColor.copy(alpha = 0.35f),
     modifier: Modifier = Modifier,
     chartHeight: Dp = 100.dp,
-    barWidth: Dp = 12.dp
+    barWidth: Dp = 12.dp,
+    emptyMessage: String = "No sleep history recorded for the past 7 days"
 ) {
+    if (points.isEmpty()) {
+        Box(
+            modifier = modifier
+                .fillMaxWidth()
+                .height(chartHeight),
+            contentAlignment = Alignment.Center
+        ) {
+            Text(
+                text = emptyMessage,
+                fontSize = 12.sp,
+                color = TextMuted
+            )
+        }
+        return
+    }
+
     val maxValue = points.maxOfOrNull { it.value }?.takeIf { it > 0f } ?: 1f
 
     Column(modifier = modifier.fillMaxWidth()) {
@@ -44,14 +60,13 @@ fun MiniBarChart(
             verticalAlignment = Alignment.Bottom
         ) {
             points.forEach { point ->
-                val ratio = (point.value / maxValue).coerceIn(0.08f, 1f)
+                val ratio = if (point.value > 0f) (point.value / maxValue).coerceIn(0.08f, 1f) else 0.04f
 
                 Column(
                     horizontalAlignment = Alignment.CenterHorizontally,
                     modifier = Modifier.fillMaxHeight(),
                     verticalArrangement = Arrangement.Bottom
                 ) {
-                    // Bar pill
                     Box(
                         modifier = Modifier
                             .width(barWidth)
@@ -78,7 +93,6 @@ fun MiniBarChart(
 
                     Spacer(modifier = Modifier.height(6.dp))
 
-                    // Label
                     Text(
                         text = point.label,
                         fontSize = 10.sp,

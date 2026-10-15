@@ -25,10 +25,16 @@ class HealthDashboardViewModel(
 
     fun loadMetrics() {
         viewModelScope.launch {
-            _uiState.value = _uiState.value.copy(isLoading = true, errorMessage = null)
+            _uiState.value = _uiState.value.copy(isLoading = true)
             val result = repository.getTodayDashboardState()
             _uiState.value = result
         }
+    }
+
+    fun getFormattedDate(): String {
+        val formatter = DateTimeFormatter.ofPattern("EEEE, MMM d")
+            .withZone(ZoneId.systemDefault())
+        return formatter.format(Instant.now()).uppercase()
     }
 
     fun formatTime(instant: Instant?): String {
