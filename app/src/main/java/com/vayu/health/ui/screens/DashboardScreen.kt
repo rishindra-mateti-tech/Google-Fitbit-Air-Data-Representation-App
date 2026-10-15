@@ -820,7 +820,7 @@ fun PrivacyPolicyDialog(onDismiss: () -> Unit) {
                 )
                 Spacer(modifier = Modifier.width(8.dp))
                 Text(
-                    text = "Privacy & Data Policy",
+                    text = "About Vayu & Data Architecture",
                     fontWeight = FontWeight.Bold,
                     fontSize = 17.sp,
                     color = TextPrimary
@@ -835,30 +835,41 @@ fun PrivacyPolicyDialog(onDismiss: () -> Unit) {
                 verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
                 Text(
-                    text = "• Pure Read-Only Visualizer: Vayu connects directly to Google Health Connect to display authentic records written by your wearable. It never writes or alters data.",
+                    text = "• The Origin & Problem Statement: Built for WHOOP users transitioning to Fitbit who found the stock health UI cluttered and disorganized. While iOS users have Bevel, Android lacked a premium, dark liquid-glass dashboard for wearable biometrics. As a fitness enthusiast and Android developer, I reverse-engineered those UX philosophies to build Vayu.",
                     fontSize = 13.sp,
-                    color = TextSecondary
+                    color = VayuCyan,
+                    lineHeight = 18.sp
                 )
                 Text(
-                    text = "• Zero Cloud / No Servers: Vayu does not request Internet permission (android.permission.INTERNET). Zero data leaves your device. No analytics, tracking SDKs, or cloud synchronization.",
+                    text = "• Zero Proprietary / Black-Box Algorithms: Unlike apps that lock you behind opaque algorithms to guess 'recovery %' or 'strain', Vayu is a pure, truthful data representation layer. It reads exact Health Connect records written by your wearable and presents the authentic physiological measurements (RMSSD HRV, RHR, sleep stages, SpO₂, calories) with zero estimation.",
                     fontSize = 13.sp,
-                    color = TextSecondary
+                    color = TextSecondary,
+                    lineHeight = 18.sp
                 )
                 Text(
-                    text = "• On-Device Processing: Health data is processed purely in volatile memory during the active session. Backup and device transfer of health data are explicitly disabled.",
+                    text = "• 100% On-Device & Zero Cloud: Vayu does not request Internet permission (android.permission.INTERNET). Zero data leaves your device. No backend servers, analytics, tracking SDKs, or cloud accounts.",
                     fontSize = 13.sp,
-                    color = TextSecondary
+                    color = TextSecondary,
+                    lineHeight = 18.sp
+                )
+                Text(
+                    text = "• In-Memory Processing: Health data is processed strictly in volatile memory during the active session. Backup and device transfer of health data are explicitly disabled.",
+                    fontSize = 13.sp,
+                    color = TextSecondary,
+                    lineHeight = 18.sp
                 )
                 Text(
                     text = "• Permission Revocation: You can view or revoke Health Connect access anytime in Android Settings → Security & Privacy → Health Connect → App permissions.",
                     fontSize = 13.sp,
-                    color = TextSecondary
+                    color = TextSecondary,
+                    lineHeight = 18.sp
                 )
                 Text(
-                    text = "• Non-Medical Disclaimer: Vayu is for personal informational purposes only. It is not a medical device and provides no medical diagnosis, interpretation, or advice.",
-                    fontSize = 13.sp,
+                    text = "• Non-Medical Disclaimer: Vayu is for personal informational and educational purposes only. It is not a medical device and provides no medical diagnosis or advice.",
+                    fontSize = 12.sp,
                     color = TextMuted,
-                    fontWeight = FontWeight.Medium
+                    fontWeight = FontWeight.Medium,
+                    lineHeight = 16.sp
                 )
             }
         },

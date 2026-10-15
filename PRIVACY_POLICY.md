@@ -39,6 +39,9 @@ Vayu requests only explicit read permissions for metrics supported on your devic
 ### Data Provenance & Attribution
 Every metric displayed in Vayu retains its exact Health Connect `DataOrigin` package name. Vayu will never disguise or re-label third-party records under generic hardware model names unless explicitly provided by that data source.
 
+### No Proprietary Black-Box Algorithms
+Vayu strictly visualizes your original recorded health metrics. It does not apply proprietary algorithms or synthetic formulas to generate artificial "Recovery %", "Daily Strain", or "Sleep Performance" scores. What you see is the unaltered physiological record written by your wearable to Health Connect.
+
 ---
 
 ## 3. Backup & Data Protection

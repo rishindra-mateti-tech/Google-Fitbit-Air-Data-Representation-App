@@ -1,113 +1,157 @@
 # Vayu — Inspired by Air
-### Google Fitbit Air Data Representation App for Android
+### High-Fidelity Android Health Connect Dashboard for Fitbit Wearables
+
+[![Platform](https://img.shields.io/badge/Platform-Android%2014%2B-3DDC84?logo=android&logoColor=white)](https://developer.android.com/about/versions/14)
+[![Language](https://img.shields.io/badge/Language-Kotlin%201.9.22-7F52FF?logo=kotlin&logoColor=white)](https://kotlinlang.org/)
+[![UI](https://img.shields.io/badge/UI-Jetpack%20Compose%20%7C%20Material3-4285F4?logo=jetpackcompose&logoColor=white)](https://developer.android.com/jetpack/compose)
+[![Health Connect](https://img.shields.io/badge/Integration-Google%20Health%20Connect-4285F4?logo=google&logoColor=white)](https://developer.android.com/health-and-fitness/guides/health-connect)
+[![Network](https://img.shields.io/badge/Network-0%20Internet%20Permissions-00E676)](#-100-local--zero-cloud-architecture)
+[![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
 
 A private, high-performance personal health dashboard for Android (optimized for Samsung Galaxy S25 Ultra). Vayu connects directly to **Google Health Connect** to present your authentic Fitbit wearable measurements in an ultra-clean, Bevel- and WHOOP-inspired dark liquid-glass interface.
 
 ---
 
-## 🌬️ Core Philosophy: Strict Pass-Through, No Invented Metrics
+## 🎯 The Problem Statement & Origin Story
 
-Vayu is built upon a single, non-negotiable principle: **Zero Synthetic Scores**.
+### 1. The WHOOP-to-Fitbit UX Friction
+Athletes and fitness enthusiasts who have tracked their physiology with **WHOOP** develop a deep appreciation for laser-focused biometric visualization—clean sleep staging, clear nocturnal heart rate variability (HRV), and resting heart rate trends without clutter. 
 
-Unlike conventional health applications that fabricate proprietary "Recovery %", "Readiness Scores", "Strain", "Sleep Performance", or "Sleep Consistency" numbers:
-* **Pure Pass-Through Architecture**: Vayu queries the original raw measurements that Google and Fitbit save into your device's local Health Connect store.
-* **No Fabricated or Estimated Data**: If a metric is not recorded or reported by your wearable, Vayu displays **"Data unavailable"** with no mock charts or simulated spline curves.
-* **No Label Conflation**: No invented scores derived from HRV, RHR, or sleep duration. Metrics are shown by their authentic physiological names (e.g. RMSSD HRV in ms, Resting Heart Rate in bpm, Sleep Duration in hours/minutes).
-* **100% Local & Private**: Absolutely zero network permissions (`android.permission.INTERNET` is completely absent), no backend servers, no analytics, no cloud databases, and no cloud backups of sensitive health data (`android:allowBackup="false"`).
+However, when migrating to **Google / Fitbit hardware**, users often face a frustrating user experience:
+* The stock Fitbit app can feel commercialized, bloated with subscription prompts, and disorganized.
+* Key physiological markers (such as raw RMSSD HRV, granular sleep stages, and real pulse distributions) are frequently buried beneath marketing banners or fragmented across disparate tabs.
+
+### 2. The Android Ecosystem Gap: Where is Bevel for Android?
+On iOS, apps like **Bevel Health** (formerly Superset) solved this exact problem for Apple Watch users. Bevel delivered a focused, premium, dark liquid-glass visualizer that translated raw Apple Health records into physiological clarity.
+
+**On Android, there was no equivalent.** Android athletes using Fitbit, Pixel Watch, or Galaxy wearables connected to Google Health Connect had no dedicated, high-aesthetic, zero-bloat dashboard.
+
+### 3. The Developer's Exploration: Reverse-Engineering Benchmark UX
+As a software engineer and dedicated fitness enthusiast, this project was born directly where personal passion and software development intersect:
+* I set out to understand how benchmark apps like WHOOP and Bevel structure data hierarchy and visual feedback.
+* By analyzing and reverse-engineering their core UX philosophies, I designed a native Android application—**Vayu ("Inspired by Air")**—built with Jetpack Compose and Material 3, tailored specifically for top-tier Android hardware like the Samsung Galaxy S25 Ultra.
 
 ---
 
-## 💎 Design System: Liquid Glass & OLED Dark Mode
+## 🧭 The Core Engineering Principle: Strict Pass-Through, Zero Black-Box Algorithms
 
-* **Palette**: Deep space obsidian (`#06080D`), frosted glass surfaces, and translucent card layers.
-* **Authentic Vitals Accents**:
-  * 🩵 **Vayu Air Cyan** (`#00F2FE` / `#4FACFE`) — Signature theme & steps
-  * 💜 **Sleep Indigo & Lavender** (`#3D5AFE` / `#7C4DFF`) — Sleep stages (Deep, REM, Light, Sleeping, Awake, Out of Bed)
-  * ❤️ **Cardiovascular Crimson** (`#FF3366`) — Resting Heart Rate & authentic pulse samples
+A central architectural decision defines Vayu: **It does NOT contain proprietary algorithms to fabricate synthetic scores.**
+
+```
+┌────────────────────────────────────────────────────────────────────────┐
+│                        CONVENTIONAL HEALTH APPS                        │
+│ Raw Biometrics ──> [ Black-Box Opaque Algorithm ] ──> "Recovery: 72%" │
+│                     (Guesses, Estimates, Hallucinates)                 │
+└────────────────────────────────────────────────────────────────────────┘
+
+┌────────────────────────────────────────────────────────────────────────┐
+│                                  VAYU                                  │
+│ Raw Health Connect ──> [ Truthful Pass-Through ] ──> RMSSD: 54.2 ms    │
+│ Fitbit Records         (Zero Guesswork, 100% Verifiable)   RHR: 58 bpm │
+│                                                            Deep: 1h 42m│
+└────────────────────────────────────────────────────────────────────────┘
+```
+
+Unlike fitness platforms that lock users behind proprietary, black-box algorithms that generate synthetic "Recovery %", "Readiness Scores", "Daily Strain", or "Sleep Performance" numbers:
+* **No Invented Scores**: Vayu never calculates artificial recovery or strain numbers from HRV or RHR. Real physiological recovery is reflected in your authentic raw baseline metrics—your true nocturnal RMSSD, your resting pulse, and your sleep architecture.
+* **Strict Pass-Through**: Vayu queries the exact, authentic measurements written by your wearable to Android Health Connect.
+* **No Fallbacks or Hallucinations**: If Fitbit has not recorded a metric for a particular day, Vayu displays **"Data unavailable"** with transparent, source-aware guidance. It never interpolates fake curve points or displays generic demo data.
+* **Exact Provenance**: Every tile, badge, and curve explicitly identifies its Health Connect `DataOrigin` source (e.g. `Fitbit Mobile`).
+
+---
+
+## 🔒 100% Local & Zero-Cloud Architecture
+
+Vayu is engineered from the ground up to respect your biometric privacy:
+* **Zero Network Permissions**: The `android.permission.INTERNET` permission is completely absent from the Android Manifest. The app cannot make network calls, connect to remote servers, or transmit data off your device.
+* **No Analytics or Tracking**: Zero third-party telemetry SDKs, crash loggers, analytics, or ad frameworks.
+* **No User Accounts**: No registration, no login, no passwords, and no cloud profile.
+* **In-Memory Processing**: Biometric data is queried from Health Connect and held strictly in volatile RAM during active sessions.
+* **Backup Exclusions**: Enforces `android:allowBackup="false"` and strict XML data extraction rules to prevent cloud or device-transfer extraction of sensitive records.
+
+---
+
+## 💎 Design System: Liquid Glass on Obsidian
+
+Engineered for Samsung's Dynamic AMOLED 2X displays:
+* **Backgrounds**: Deep space obsidian (`#06080D` / `#0A0E17`) with frosted liquid-glass card surfaces (`Color(0x1AFFFFFF)`).
+* **Vitals Color Palette**:
+  * 🩵 **Vayu Cyan** (`#00F2FE`) — Signature theme, steps, and SpO₂
+  * 💜 **Sleep Lavender & Indigo** (`#3D5AFE` / `#7C4DFF`) — Deep, REM, Light, and Awake sleep stages
+  * ❤️ **Cardiovascular Crimson** (`#FF3366`) — Resting Heart Rate & pulse sample waves
   * 💚 **HRV Emerald** (`#00E676`) — RMSSD Heart Rate Variability
-  * 🧡 **Metabolic Amber** (`#FF9100`) — De-duplicated Active & Total Caloric burn
-  * 🌊 **Teal & Mint** (`#00E5FF`) — Blood Oxygen (SpO₂), Respiration & Skin Temperature
-* **Customizable Dashboard**: Long-press/edit reordering allows personalized card arrangement with automatic layout persistence.
+  * 🧡 **Metabolic Amber** (`#FF9100`) — Total and active energy expenditure
+  * 🌊 **Respiration Teal** (`#00E5FF`) — Nocturnal breathing rate & skin temperature deviation
+* **Responsive Layouts**: Designed to eliminate text wrapping or squeezed cards on 1080p–1440p displays. Compact single-line provenance pills (`Fitbit`, `Samsung`, `Google Fit`) prevent vertical badge wrapping.
+* **Customizable Dashboard**: Top-right **Edit** toggle allows long-press and smooth drag-and-drop card reordering, automatically persisted locally via `SharedPreferences`.
 
 ---
 
-## 📊 Health Connect Implementation & Raw Semantics
+## 📊 Health Connect Record Representation & Semantics
 
-| Category | Record Type | Handling & Attribution |
+| Metric | Health Connect Record Type | Representation Semantics |
 | :--- | :--- | :--- |
-| **Sleep Session** | `SleepSessionRecord` | Preserves raw stage types (`OUT_OF_BED` is preserved distinct from `AWAKE`). Separates total session elapsed time from actual sleep duration. |
-| **7-Day Sleep History** | `SleepSessionRecord` | Queries authentic recorded sessions over a 7-day window. Shows empty state if no sessions exist. |
-| **Resting Heart Rate** | `RestingHeartRateRecord` | Exact recorded BPM and timestamp with source package attribution. |
-| **Heart Rate Variability** | `HeartRateVariabilityRmssdRecord` | Raw RMSSD value in milliseconds. |
-| **Heart Rate Curve** | `HeartRateRecord` | Paginated retrieval (1,000 records/page) extracting authentic sample points for the curve; displays true min/max/average. |
-| **Activity Totals** | `client.aggregate(...)` | Uses Health Connect Aggregate APIs (`COUNT_TOTAL`, `DISTANCE_TOTAL`, `ENERGY_TOTAL`) for user-priority de-duplicated totals across apps. Lists contributing package origins. |
-| **Respiratory & Oxygen** | `RespiratoryRateRecord`, `OxygenSaturationRecord` | Exact breaths per minute and SpO₂ percentage. |
-| **Skin Temperature** | `SkinTemperatureRecord` | Feature-flag checked (`FEATURE_SKIN_TEMPERATURE`), accurately averaging deltas with baseline and min/max delta reporting. |
-| **Database Inspector** | Raw Records | Real-time audit tool inspecting raw Health Connect database entries, record IDs, and timestamps. |
+| **Activity & Energy** | `AggregateRequest` (`TotalCaloriesBurnedRecord.ENERGY_TOTAL`, `StepsRecord.COUNT_TOTAL`, etc.) | Spacious 2x2 grid displaying Steps, Total Energy (e.g. `1,790 kcal`), Active Energy, and Distance. Preserves contributing `DataOrigin` packages. |
+| **Sleep Session** | `SleepSessionRecord` | Distinguishes actual sleep duration from total elapsed session time. Preserves raw stages (`OUT_OF_BED` is never conflated with `AWAKE`). |
+| **7-Day Sleep History** | `SleepSessionRecord` (7-day window) | Multi-session support per day with nullable `actualSleepMinutes` (shows empty state when stages are unrecorded). |
+| **Heart Rate Wave** | `HeartRateRecord` (Paginated samples) | True continuous pulse samples plotted with cubic Bézier curves; exact min, average, and peak BPM. |
+| **Resting Heart Rate** | `RestingHeartRateRecord` | Exact resting BPM with sample timestamp and source package. |
+| **HRV (RMSSD)** | `HeartRateVariabilityRmssdRecord` | Authentic RMSSD in milliseconds. |
+| **Blood Oxygen (SpO₂)** | `OxygenSaturationRecord` | Exact percentage with independent timestamp and provenance attribution. |
+| **Skin Temperature** | `SkinTemperatureRecord` | Feature-flagged check (`FEATURE_SKIN_TEMPERATURE`), reporting exact baseline delta in °C. |
+| **Data Inspector** | Dual-section audit log | Transparently displays **Today's Aggregates Used by Vayu** alongside **Individual Records in This Time Window**. |
 
 ---
 
-## 🛡️ Truthful Source Attribution & Robust Error Handling
+## 🛡️ Fitbit-Only Source Filtering & Source Selector
 
-* **Truthful Provenance**: Cards display the authentic Health Connect `DataOrigin` package name (such as `com.fitbit.FitbitMobile`, `com.google.android.apps.fitness`, or `com.samsung.health`). Labels never default to unverified hardware strings like "Fitbit Air".
-* **Health Connect SDK Lifecycle**:
-  * Checks SDK availability (`AVAILABLE`, `UPDATE_REQUIRED`, `UNAVAILABLE`) and guides the user if an update from Google Play is needed.
-  * Checks feature support (e.g. Skin Temperature availability) before querying.
-  * Handles partial permissions gracefully: queries only metrics granted by the user without failing other cards.
-  * Safe error surfaces: Swallowed exceptions are replaced with visible, informative error banners on the dashboard.
-  * Immediate refresh: Listens to permission launcher results and `onResume()` to reload records without requiring an app restart.
+Vayu is designed to isolate your Fitbit data from other apps that may write to Health Connect:
+* **Detected Sources Auto-Discovery**: Identifies all packages that have contributed health data on the device.
+* **Fitbit Priority**: Defaults to `com.fitbit.FitbitMobile` and filters every single read request and aggregate query (`dataOriginFilter`).
+* **Clean Source Dialog**: Filters internal system hash packages (e.g. `com.android.healthconnect.phone...`) behind a collapsible *Advanced: System Providers* toggle.
+* **High-Contrast Selection**: Pure black text (`#06080D`) on bright cyan buttons for clear readability.
 
 ---
 
----
+## 🧪 Testing & Quality Assurance
 
-## 🔒 Fitbit-Only Source Filtering & Zero Data Leakage
-
-To guarantee complete fidelity to your wearable:
-* **Automatic Origin Detection**: Detects all health record contributors on the device.
-* **Fitbit Priority**: Defaults to `com.fitbit.FitbitMobile` and strictly filters every single read request and aggregate query (`dataOriginFilter`).
-* **Zero Cross-Contamination**: In-memory verification discards any non-Fitbit records (e.g. Samsung Health, Google Fit) when in Fitbit mode.
-* **Fitbit Sync Needed State**: If Fitbit has not yet exported data to Health Connect, Vayu presents a helpful "Fitbit Sync Needed" guide rather than silently substituting data from another app.
-* **Source Selector**: A source pill button in the top bar allows checking detected packages or explicitly choosing "All Health Connect Sources" (labeled as mixed-source).
-
----
-
-## 🧪 Testing & Continuous Integration
-
-### Unit Tests (`app/src/test`): 23 Passed (100%)
-* `testFitbitOnlyFiltering_strictlyFiltersRecords`: Verifies strict origin matching and zero leakage.
-* `testNoMixedSourceLeakage_inFitbitMode`: Verifies foreign records are never included in calculations.
-* `testUnavailableFitbitData_returnsNullAndFlagsSyncNeeded`: Validates `isFitbitSyncNeeded` flag and graceful nulls.
-* `testSourceAndTimestampAccuracy_preservedPrecisely`: Confirms timestamp and package preservation.
-* `testRealSampleGraphPoints_onlyFitbitPointsPlotted`: Confirms only authentic samples are charted.
-* `testNoSyntheticMetricLabels_verifiesCleanState`: Verifies total absence of synthetic wellness scores.
-* `testSleepMetric_computesSessionElapsedAndActualSleepDurationAccurately`: Verifies session elapsed vs sleep duration.
-* `testSleepMetric_nullActualSleepWhenNoStagesRecorded`: Validates nullable actual sleep.
-* `testHeartRateCalculations_accurateAggregations`: Verifies pulse sample aggregations.
-* `testSkinTemperature_accurateAverageAndDeltas`: Verifies skin temperature delta calculations.
-* `testTruthfulSourceAttribution_packageNamesPreserved`: Validates `DataOrigin` string preservation.
-* `testRepository_handlesSdkUnavailable` & `testRepository_handlesSdkUpdateRequired`: Verifies SDK state resilience.
-* `testRepository_handlesEmptyPermissions` & `testRepository_handlesPartialMetricFailuresGracefully`: Verifies partial permissions.
+### Unit Tests (`app/src/test`): 27 Passed (100%)
+* `ProvenanceFormatterTest`: Tests friendly display name formatting, single-word compact pill generation, system hash package detection, and source-aware empty states.
+* `HealthDataMappingTest`:
+  * `testFitbitOnlyFiltering_strictlyFiltersRecords`: Verifies strict origin matching and zero leakage.
+  * `testNoMixedSourceLeakage_inFitbitMode`: Verifies foreign records are never included in calculations.
+  * `testUnavailableFitbitData_returnsNullAndFlagsSyncNeeded`: Validates `isFitbitSyncNeeded` flag and graceful nulls.
+  * `testSourceAndTimestampAccuracy_preservedPrecisely`: Confirms timestamp and package preservation.
+  * `testRealSampleGraphPoints_onlyFitbitPointsPlotted`: Confirms only authentic samples are charted.
+  * `testNoSyntheticMetricLabels_verifiesCleanState`: Verifies total absence of synthetic wellness scores.
+  * `testSleepMetric_computesSessionElapsedAndActualSleepDurationAccurately`: Verifies session elapsed vs sleep duration.
+  * `testSleepMetric_nullActualSleepWhenNoStagesRecorded`: Validates nullable actual sleep.
+  * `testHeartRateCalculations_accurateAggregations`: Verifies pulse sample aggregations.
+  * `testSkinTemperature_accurateAverageAndDeltas`: Verifies skin temperature delta calculations.
+  * `testTruthfulSourceAttribution_packageNamesPreserved`: Validates `DataOrigin` string preservation.
+  * `testRepository_handlesSdkUnavailable` & `testRepository_handlesSdkUpdateRequired`: Verifies SDK state resilience.
+  * `testRepository_handlesEmptyPermissions` & `testRepository_handlesPartialMetricFailuresGracefully`: Verifies partial permissions.
 
 > [!NOTE]
-> **Execution Status**: All 23 unit tests executed and passed cleanly (`BUILD SUCCESSFUL`). Instrumented tests in `app/src/androidTest` compiled cleanly, but were **not executed** because no physical device or emulator is currently attached to the build environment (`adb devices` is empty).
+> All 27 unit tests executed and passed cleanly (`BUILD SUCCESSFUL`). Android Lint completed with 0 errors (`lintDebug`).
 
 ---
 
-## 📦 Final Personal Test Deliverable
+## 📦 Verified Deliverables & Downloads
 
-| File | Purpose | SHA-256 Checksum |
+| File | Type | SHA-256 Checksum |
 | :--- | :--- | :--- |
-| **`Vayu-Personal-Test.apk`** | Sideloadable debug APK with authentic custom app icon for personal testing on Samsung Galaxy S25 Ultra | `88E0166E077FD5BB0019706C130ACF2DE67963926D415E79927445028378F556` |
+| **[`Vayu-Personal-Test.apk`](https://github.com/rishindra-mateti-tech/Google-Fitbit-Air-Data-Representation-App/releases/download/v1.0.0/Vayu-Personal-Test.apk)** | Sideloadable debug APK with authentic custom app icon for personal testing on Samsung Galaxy S25 Ultra | `167388D5536FC6BBFBFD3AA6E42300FDD87BEAC0DEB6FF8A8484FA7DC0299612` |
+| **`Vayu-debug.apk`** | Debug Build | `D8C3FD78ADE8B58FA3835BDF34DDEF9E6C902B0C403282E977732A003E9C51CA` |
+| **`Vayu-release.apk`** | Production Release Build | `9FDAC1331A6E1D615892954BB98A06DA70FA87B745094848BBF22594B00815DC` |
 
 ---
 
-## 📱 Sideloading onto Samsung Galaxy S25 Ultra
+## 📲 Sideloading onto Samsung Galaxy S25 Ultra
 
-1. Transfer or download **`Vayu-Personal-Test.apk`** directly to your Galaxy S25 Ultra.
-2. Open **My Files** > **Downloads** (or your transfer folder) and tap **`Vayu-Personal-Test.apk`**.
+1. Download **[`Vayu-Personal-Test.apk`](https://github.com/rishindra-mateti-tech/Google-Fitbit-Air-Data-Representation-App/releases/download/v1.0.0/Vayu-Personal-Test.apk)** directly to your phone.
+2. Open **My Files** > **Downloads** and tap **`Vayu-Personal-Test.apk`**.
 3. If prompted by One UI ("Install unknown apps"), toggle **Allow from this source**.
 4. Tap **Install** to finish sideloading.
-5. Launch **Vayu**, review the detected sources dialog, and tap **Continue with Fitbit Only**.
-6. When prompted by Health Connect, grant read permissions for the metrics you wish to visualize.
-
+5. Launch **Vayu**, review the detected sources dialog, and tap **Confirm Selection**.
+6. When prompted by Android Health Connect, grant read permissions for the metrics you wish to visualize.
