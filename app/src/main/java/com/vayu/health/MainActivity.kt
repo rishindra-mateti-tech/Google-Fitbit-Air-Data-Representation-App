@@ -221,7 +221,8 @@ class MainActivity : ComponentActivity() {
                                 when (selectedTab) {
                                     VayuTab.OVERVIEW -> DashboardScreen(
                                         state = uiState,
-                                        viewModel = viewModel
+                                        viewModel = viewModel,
+                                        onOpenTab = { selectedTab = it }
                                     )
                                     VayuTab.SLEEP -> SleepScreen(
                                         state = uiState,

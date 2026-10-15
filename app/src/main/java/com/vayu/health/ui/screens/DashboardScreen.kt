@@ -57,6 +57,7 @@ enum class DashboardCardId {
 fun DashboardScreen(
     state: HealthDashboardState,
     viewModel: HealthDashboardViewModel,
+    onOpenTab: (VayuTab) -> Unit,
     modifier: Modifier = Modifier
 ) {
     val scrollState = rememberScrollState()
@@ -330,22 +331,22 @@ fun DashboardScreen(
             Box(modifier = cardModifier) {
                 when (cardId) {
                     DashboardCardId.SLEEP_SESSION -> {
-                        SleepSessionCard(state = state, viewModel = viewModel)
+                        SleepSessionCard(state = state, viewModel = viewModel) { onOpenTab(VayuTab.SLEEP) }
                     }
                     DashboardCardId.DAILY_ACTIVITY -> {
-                        DailyActivityCard(state = state)
+                        DailyActivityCard(state = state) { onOpenTab(VayuTab.ACTIVITY) }
                     }
                     DashboardCardId.HEART_RATE_CURVE -> {
-                        HeartRateCurveCard(state = state, viewModel = viewModel)
+                        HeartRateCurveCard(state = state, viewModel = viewModel) { onOpenTab(VayuTab.VITALS) }
                     }
                     DashboardCardId.RESTING_HR_AND_HRV -> {
-                        RestingHrAndHrvCard(state = state)
+                        RestingHrAndHrvCard(state = state) { onOpenTab(VayuTab.VITALS) }
                     }
                     DashboardCardId.SLEEP_HISTORY_7_DAYS -> {
-                        SleepHistory7DaysCard(state = state)
+                        SleepHistory7DaysCard(state = state) { onOpenTab(VayuTab.SLEEP) }
                     }
                     DashboardCardId.RESPIRATORY_AND_TEMP -> {
-                        RespiratoryAndTempCard(state = state)
+                        RespiratoryAndTempCard(state = state) { onOpenTab(VayuTab.VITALS) }
                     }
                 }
 
@@ -868,11 +869,15 @@ fun PrivacyPolicyDialog(onDismiss: () -> Unit) {
 
 // CARD 1: Authentic Sleep Session & Stages
 @Composable
-fun SleepSessionCard(state: HealthDashboardState, viewModel: HealthDashboardViewModel) {
+fun SleepSessionCard(
+    state: HealthDashboardState,
+    viewModel: HealthDashboardViewModel,
+    onClick: () -> Unit
+) {
     val sleep = state.sleep
 
     GlassCard(
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier.fillMaxWidth().clickable(onClick = onClick),
         backgroundColor = Color(0xFF0E1015),
         borderBrush = SolidColor(Color(0x18FFFFFF))
     ) {
@@ -1003,12 +1008,12 @@ fun SleepSessionCard(state: HealthDashboardState, viewModel: HealthDashboardView
 
 // CARD 2: Daily Activity (Spacious 2x2 Metric Grid with Aggregates)
 @Composable
-fun DailyActivityCard(state: HealthDashboardState) {
+fun DailyActivityCard(state: HealthDashboardState, onClick: () -> Unit) {
     val activity = state.activity
     val isFiltered = state.selectedSource != null
 
     GlassCard(
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier.fillMaxWidth().clickable(onClick = onClick),
         backgroundColor = Color(0xFF0E1015),
         borderBrush = SolidColor(Color(0x18FFFFFF))
     ) {
@@ -1233,11 +1238,15 @@ fun DailyActivityCard(state: HealthDashboardState) {
 
 // CARD 3: Authentic Heart Rate Wave Curve
 @Composable
-fun HeartRateCurveCard(state: HealthDashboardState, viewModel: HealthDashboardViewModel) {
+fun HeartRateCurveCard(
+    state: HealthDashboardState,
+    viewModel: HealthDashboardViewModel,
+    onClick: () -> Unit
+) {
     val hr = state.heartRate
 
     GlassCard(
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier.fillMaxWidth().clickable(onClick = onClick),
         backgroundColor = Color(0xFF0E1015),
         borderBrush = SolidColor(Color(0x18FFFFFF))
     ) {
@@ -1344,7 +1353,7 @@ fun HeartRateCurveCard(state: HealthDashboardState, viewModel: HealthDashboardVi
 
 // CARD 4: Resting Heart Rate & HRV Dual Card
 @Composable
-fun RestingHrAndHrvCard(state: HealthDashboardState) {
+fun RestingHrAndHrvCard(state: HealthDashboardState, onClick: () -> Unit) {
     val rhr = state.restingHeartRate
     val hrv = state.hrv
 
@@ -1354,7 +1363,7 @@ fun RestingHrAndHrvCard(state: HealthDashboardState) {
     ) {
         // Resting HR
         GlassCard(
-            modifier = Modifier.weight(1f),
+            modifier = Modifier.weight(1f).clickable(onClick = onClick),
             backgroundColor = Color(0xFF0E1015),
             borderBrush = SolidColor(Color(0x18FFFFFF))
         ) {
@@ -1391,7 +1400,7 @@ fun RestingHrAndHrvCard(state: HealthDashboardState) {
 
         // HRV
         GlassCard(
-            modifier = Modifier.weight(1f),
+            modifier = Modifier.weight(1f).clickable(onClick = onClick),
             backgroundColor = Color(0xFF0E1015),
             borderBrush = SolidColor(Color(0x18FFFFFF))
         ) {
@@ -1430,11 +1439,11 @@ fun RestingHrAndHrvCard(state: HealthDashboardState) {
 
 // CARD 5: 7-Day Sleep History
 @Composable
-fun SleepHistory7DaysCard(state: HealthDashboardState) {
+fun SleepHistory7DaysCard(state: HealthDashboardState, onClick: () -> Unit) {
     val history = state.dailySleepHistory
 
     GlassCard(
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier.fillMaxWidth().clickable(onClick = onClick),
         backgroundColor = Color(0xFF0E1015),
         borderBrush = SolidColor(Color(0x18FFFFFF))
     ) {
@@ -1553,7 +1562,7 @@ fun SleepHistory7DaysCard(state: HealthDashboardState) {
 
 // CARD 6: Blood Oxygen & Skin Temperature
 @Composable
-fun RespiratoryAndTempCard(state: HealthDashboardState) {
+fun RespiratoryAndTempCard(state: HealthDashboardState, onClick: () -> Unit) {
     val resp = state.respiratory
     val spo2 = resp?.spo2Percentage
     val skinTemp = resp?.skinTemperature
@@ -1564,7 +1573,7 @@ fun RespiratoryAndTempCard(state: HealthDashboardState) {
     ) {
         // SpO2
         GlassCard(
-            modifier = Modifier.weight(1f),
+            modifier = Modifier.weight(1f).clickable(onClick = onClick),
             backgroundColor = Color(0xFF0E1015),
             borderBrush = SolidColor(Color(0x18FFFFFF))
         ) {
@@ -1601,7 +1610,7 @@ fun RespiratoryAndTempCard(state: HealthDashboardState) {
 
         // Skin Temp
         GlassCard(
-            modifier = Modifier.weight(1f),
+            modifier = Modifier.weight(1f).clickable(onClick = onClick),
             backgroundColor = Color(0xFF0E1015),
             borderBrush = SolidColor(Color(0x18FFFFFF))
         ) {
