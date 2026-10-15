@@ -3,6 +3,7 @@ package com.vayu.health.ui.viewmodel
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.vayu.health.data.HealthMetricsRepository
+import com.vayu.health.data.HealthSourcePreferences
 import com.vayu.health.data.model.HealthDashboardState
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -13,22 +14,60 @@ import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 
 class HealthDashboardViewModel(
-    private val repository: HealthMetricsRepository
+    private val repository: HealthMetricsRepository,
+    private val sourcePreferences: HealthSourcePreferences? = null
 ) : ViewModel() {
 
-    private val _uiState = MutableStateFlow(HealthDashboardState(isLoading = true))
+    private var currentSource: String? = sourcePreferences?.getSelectedSource() ?: "com.fitbit.FitbitMobile"
+
+    private val _uiState = MutableStateFlow(
+        HealthDashboardState(
+            isLoading = true,
+            selectedSource = currentSource
+        )
+    )
     val uiState: StateFlow<HealthDashboardState> = _uiState.asStateFlow()
+
+    private val _isFirstRun = MutableStateFlow(sourcePreferences?.isFirstRun() ?: false)
+    val isFirstRun: StateFlow<Boolean> = _isFirstRun.asStateFlow()
 
     init {
         loadMetrics()
     }
 
-    fun loadMetrics() {
+    @Suppress("UNUSED_PARAMETER")
+    fun loadMetrics(forceRefresh: Boolean = false) {
         viewModelScope.launch {
             _uiState.value = _uiState.value.copy(isLoading = true)
-            val result = repository.getTodayDashboardState()
+            val result = repository.getTodayDashboardState(sourceFilter = currentSource)
+            
+            // On first run, if a Fitbit package is detected that differs from currentSource, auto-prefer it
+            if (_isFirstRun.value && result.detectedSources.isNotEmpty()) {
+                val detectedFitbit = result.detectedSources.firstOrNull { it.contains("fitbit", ignoreCase = true) }
+                if (detectedFitbit != null && detectedFitbit != currentSource) {
+                    currentSource = detectedFitbit
+                    sourcePreferences?.setSelectedSource(detectedFitbit)
+                    val reloaded = repository.getTodayDashboardState(sourceFilter = currentSource)
+                    _uiState.value = reloaded
+                    return@launch
+                }
+            }
+
             _uiState.value = result
         }
+    }
+
+    fun setSourceFilter(source: String?) {
+        currentSource = source
+        sourcePreferences?.setSelectedSource(source)
+        sourcePreferences?.setFirstRunCompleted()
+        _isFirstRun.value = false
+        loadMetrics()
+    }
+
+    fun dismissFirstRun() {
+        sourcePreferences?.setFirstRunCompleted()
+        _isFirstRun.value = false
     }
 
     fun getFormattedDate(): String {

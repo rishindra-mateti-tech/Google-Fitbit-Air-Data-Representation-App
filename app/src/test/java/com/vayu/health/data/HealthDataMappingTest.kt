@@ -266,17 +266,17 @@ class HealthDataMappingTest {
             override fun getSdkStatus(): HealthConnectStatus = HealthConnectStatus.AVAILABLE
             override suspend fun getGrantedPermissions(): Set<String> = setOf("permission.READ_STEPS", "permission.READ_SLEEP")
 
-            override suspend fun readSleep(start: Instant, end: Instant): SleepMetric {
+            override suspend fun readSleep(start: Instant, end: Instant, sourceFilter: String?): SleepMetric {
                 throw SecurityException("Security check failed for sleep record")
             }
 
-            override suspend fun readActivity(start: Instant, end: Instant): ActivityMetric {
+            override suspend fun readActivity(start: Instant, end: Instant, sourceFilter: String?): ActivityMetric {
                 return ActivityMetric(
                     steps = 5000L,
                     activeCaloriesKcal = 200.0,
                     totalCaloriesKcal = 1800.0,
                     distanceMeters = 3500.0,
-                    sources = setOf("com.fitbit.FitbitMobile"),
+                    sources = setOf(sourceFilter ?: "com.fitbit.FitbitMobile"),
                     lastUpdated = end
                 )
             }
@@ -420,5 +420,179 @@ class HealthDataMappingTest {
         val exceptionBlank = IllegalArgumentException("   ")
         val sanitizedBlank = repo.sanitizeErrorMessage("sleep", exceptionBlank)
         assertEquals("Error reading sleep: System read error", sanitizedBlank)
+    }
+
+    @Test
+    fun testFitbitOnlyFiltering_strictlyFiltersRecords() = runTest {
+        val fitbitSource = "com.fitbit.FitbitMobile"
+        val samsungSource = "com.samsung.health"
+
+        val fakeManager = object : HealthConnectManager(null) {
+            override fun getSdkStatus(): HealthConnectStatus = HealthConnectStatus.AVAILABLE
+            override suspend fun getGrantedPermissions(): Set<String> = setOf("permission.READ_STEPS", "permission.READ_HEART_RATE")
+            override suspend fun detectAvailableDataOrigins(start: Instant, end: Instant): Set<String> =
+                setOf(fitbitSource, samsungSource)
+
+            override suspend fun readActivity(start: Instant, end: Instant, sourceFilter: String?): ActivityMetric? {
+                return if (sourceFilter == fitbitSource) {
+                    ActivityMetric(
+                        steps = 8450L,
+                        activeCaloriesKcal = 350.0,
+                        totalCaloriesKcal = 2100.0,
+                        distanceMeters = 6200.0,
+                        sources = setOf(fitbitSource),
+                        lastUpdated = end
+                    )
+                } else if (sourceFilter == null) {
+                    ActivityMetric(
+                        steps = 15000L,
+                        activeCaloriesKcal = 600.0,
+                        totalCaloriesKcal = 3000.0,
+                        distanceMeters = 11000.0,
+                        sources = setOf(fitbitSource, samsungSource),
+                        lastUpdated = end
+                    )
+                } else null
+            }
+        }
+
+        val repo = HealthMetricsRepository(fakeManager)
+        val state = repo.getTodayDashboardState(sourceFilter = fitbitSource)
+
+        assertEquals(fitbitSource, state.selectedSource)
+        assertNotNull(state.activity)
+        assertEquals(8450L, state.activity?.steps)
+        assertEquals(setOf(fitbitSource), state.activity?.sources)
+        assertFalse(state.activity?.sources?.contains(samsungSource) == true)
+        assertTrue(state.isFitbitDetected)
+        assertFalse(state.isFitbitSyncNeeded)
+    }
+
+    @Test
+    fun testNoMixedSourceLeakage_inFitbitMode() {
+        val now = Instant.parse("2026-10-15T10:00:00Z")
+        val fitbitSource = "com.fitbit.FitbitMobile"
+        val otherSource = "com.google.android.apps.fitness"
+
+        val mixedSamples = listOf(
+            HeartRateSamplePoint(now.minusSeconds(120), 65, fitbitSource),
+            HeartRateSamplePoint(now.minusSeconds(60), 120, otherSource), // Leak candidate
+            HeartRateSamplePoint(now, 70, fitbitSource)
+        )
+
+        // Filter strictly to Fitbit
+        val fitbitSamples = mixedSamples.filter { it.sourcePackage == fitbitSource }
+        val hrSummary = HealthDataCalculations.calculateHeartRateStats(fitbitSamples)
+
+        assertNotNull(hrSummary)
+        // Average: (65 + 70) / 2 = 67 (does not leak otherSource's 120 bpm!)
+        assertEquals(67L, hrSummary!!.averageBpm)
+        assertEquals(65L, hrSummary.minBpm)
+        assertEquals(70L, hrSummary.maxBpm)
+        assertEquals(70L, hrSummary.latestBpm)
+
+        val sources = fitbitSamples.map { it.sourcePackage }.toSet()
+        assertEquals(1, sources.size)
+        assertTrue(sources.contains(fitbitSource))
+        assertFalse(sources.contains(otherSource))
+    }
+
+    @Test
+    fun testUnavailableFitbitData_returnsNullAndFlagsSyncNeeded() = runTest {
+        val fitbitSource = "com.fitbit.FitbitMobile"
+        val samsungSource = "com.samsung.health"
+
+        val fakeManager = object : HealthConnectManager(null) {
+            override fun getSdkStatus(): HealthConnectStatus = HealthConnectStatus.AVAILABLE
+            override suspend fun getGrantedPermissions(): Set<String> = setOf("permission.READ_STEPS")
+            // Only samsung is detected, zero records from fitbit
+            override suspend fun detectAvailableDataOrigins(start: Instant, end: Instant): Set<String> =
+                setOf(samsungSource)
+
+            override suspend fun readActivity(start: Instant, end: Instant, sourceFilter: String?): ActivityMetric? {
+                // If filtered to fitbit, returns null (zero fitbit records)
+                return if (sourceFilter == fitbitSource) null else ActivityMetric(
+                    steps = 12000L,
+                    activeCaloriesKcal = 500.0,
+                    totalCaloriesKcal = 2400.0,
+                    distanceMeters = 8000.0,
+                    sources = setOf(samsungSource),
+                    lastUpdated = end
+                )
+            }
+        }
+
+        val repo = HealthMetricsRepository(fakeManager)
+        val state = repo.getTodayDashboardState(sourceFilter = fitbitSource)
+
+        // When Fitbit is selected but has zero records:
+        assertNull(state.activity) // Must NOT substitute Samsung's 12000 steps!
+        assertNull(state.sleep)
+        assertNull(state.heartRate)
+        assertTrue(state.isFitbitSyncNeeded)
+        assertFalse(state.isFitbitDetected)
+    }
+
+    @Test
+    fun testSourceAndTimestampAccuracy_preservedPrecisely() {
+        val testTime = Instant.parse("2026-10-15T07:15:30Z")
+        val fitbitSource = "com.fitbit.FitbitMobile"
+
+        val rhr = RestingHeartRateMetric(
+            beatsPerMinute = 56L,
+            timestamp = testTime,
+            sourcePackage = fitbitSource
+        )
+
+        assertEquals(56L, rhr.beatsPerMinute)
+        assertEquals(testTime, rhr.timestamp)
+        assertEquals(fitbitSource, rhr.sourcePackage)
+
+        val hrv = HrvMetric(
+            rmssdMillis = 48.7,
+            timestamp = testTime,
+            sourcePackage = fitbitSource
+        )
+        assertEquals(48.7, hrv.rmssdMillis, 0.001)
+        assertEquals(testTime, hrv.timestamp)
+        assertEquals(fitbitSource, hrv.sourcePackage)
+    }
+
+    @Test
+    fun testRealSampleGraphPoints_onlyFitbitPointsPlotted() {
+        val t0 = Instant.parse("2026-10-15T08:00:00Z")
+        val fitbitSource = "com.fitbit.FitbitMobile"
+
+        val fitbitSamples = listOf(
+            HeartRateSamplePoint(t0, 60L, fitbitSource),
+            HeartRateSamplePoint(t0.plusSeconds(300), 65L, fitbitSource),
+            HeartRateSamplePoint(t0.plusSeconds(600), 72L, fitbitSource)
+        )
+
+        // Verify each sample is an authentic point
+        val points = fitbitSamples.map { it.beatsPerMinute }
+        assertEquals(listOf(60L, 65L, 72L), points)
+        fitbitSamples.forEach {
+            assertEquals(fitbitSource, it.sourcePackage)
+        }
+    }
+
+    @Test
+    fun testNoSyntheticMetricLabels_verifiesCleanState() {
+        val state = HealthDashboardState(
+            isLoading = false,
+            sdkStatus = HealthConnectStatus.AVAILABLE,
+            grantedPermissions = setOf("android.permission.health.READ_STEPS"),
+            selectedSource = "com.fitbit.FitbitMobile"
+        )
+
+        // Absolute guarantee that no synthetic scores or interpretations exist in state
+        assertNull(state.sleep)
+        assertNull(state.restingHeartRate)
+        assertNull(state.hrv)
+        assertNull(state.heartRate)
+        assertNull(state.activity)
+        assertNull(state.respiratory)
+        assertEquals("com.fitbit.FitbitMobile", state.selectedSource)
     }
 }

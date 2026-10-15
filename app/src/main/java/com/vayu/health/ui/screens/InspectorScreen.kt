@@ -49,8 +49,9 @@ fun InspectorScreen(
                     fontWeight = FontWeight.Bold,
                     color = TextPrimary
                 )
+                val filterLabel = state.selectedSource?.let { "Source: $it" } ?: "All Health Connect Sources"
                 Text(
-                    text = "Health Connect Supported Record Types",
+                    text = "$filterLabel • ${state.rawRecords.size} records",
                     fontSize = 12.sp,
                     color = VayuCyan
                 )

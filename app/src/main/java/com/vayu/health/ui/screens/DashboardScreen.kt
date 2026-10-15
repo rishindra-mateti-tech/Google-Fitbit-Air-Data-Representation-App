@@ -2,8 +2,10 @@ package com.vayu.health.ui.screens
 
 import android.content.Context
 import androidx.compose.animation.*
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
@@ -14,13 +16,17 @@ import androidx.compose.material.icons.filled.ArrowDownward
 import androidx.compose.material.icons.filled.ArrowUpward
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.FilterList
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.Sync
+import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.platform.LocalContext
@@ -51,6 +57,14 @@ fun DashboardScreen(
     val scrollState = rememberScrollState()
     var isEditMode by remember { mutableStateOf(false) }
     var showPrivacyDialog by remember { mutableStateOf(false) }
+    var showSourceDialog by remember { mutableStateOf(false) }
+
+    val isFirstRun by viewModel.isFirstRun.collectAsState()
+    LaunchedEffect(isFirstRun) {
+        if (isFirstRun) {
+            showSourceDialog = true
+        }
+    }
 
     val context = LocalContext.current
     val prefs = remember { context.getSharedPreferences("vayu_layout_prefs", Context.MODE_PRIVATE) }
@@ -87,6 +101,21 @@ fun DashboardScreen(
         PrivacyPolicyDialog(onDismiss = { showPrivacyDialog = false })
     }
 
+    if (showSourceDialog) {
+        SourceSelectionDialog(
+            state = state,
+            currentSelected = state.selectedSource,
+            onSelectSource = { newSource ->
+                viewModel.setSourceFilter(newSource)
+                showSourceDialog = false
+            },
+            onDismiss = {
+                viewModel.dismissFirstRun()
+                showSourceDialog = false
+            }
+        )
+    }
+
     Column(
         modifier = modifier
             .fillMaxSize()
@@ -119,6 +148,45 @@ fun DashboardScreen(
             }
 
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                // Source Selector Pill
+                val sourceLabel = if (state.selectedSource != null) {
+                    if (state.selectedSource.contains("fitbit", ignoreCase = true)) "Fitbit" else state.selectedSource
+                } else {
+                    "All Sources"
+                }
+
+                Box(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(16.dp))
+                        .background(Color(0x1AFFFFFF))
+                        .border(0.5.dp, if (state.selectedSource != null) VayuCyan.copy(alpha = 0.5f) else EnergyAmber.copy(alpha = 0.5f), RoundedCornerShape(16.dp))
+                        .clickable { showSourceDialog = true }
+                        .padding(horizontal = 10.dp, vertical = 7.dp)
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Box(
+                            modifier = Modifier
+                                .size(6.dp)
+                                .clip(CircleShape)
+                                .background(if (state.selectedSource != null) VayuCyan else EnergyAmber)
+                        )
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text(
+                            text = sourceLabel,
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = TextPrimary
+                        )
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Icon(
+                            imageVector = Icons.Default.Tune,
+                            contentDescription = "Source Settings",
+                            tint = TextMuted,
+                            modifier = Modifier.size(12.dp)
+                        )
+                    }
+                }
+
                 IconButton(
                     onClick = { showPrivacyDialog = true },
                     modifier = Modifier
@@ -135,7 +203,7 @@ fun DashboardScreen(
                 }
 
                 IconButton(
-                    onClick = { viewModel.loadMetrics() },
+                    onClick = { viewModel.loadMetrics(forceRefresh = true) },
                     modifier = Modifier
                         .size(34.dp)
                         .clip(CircleShape)
@@ -180,16 +248,45 @@ fun DashboardScreen(
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(vertical = 6.dp)
-                    .clip(RoundedCornerShape(12.dp))
-                    .background(Color(0x2000F2FE))
-                    .border(1.dp, VayuCyan.copy(alpha = 0.5f), RoundedCornerShape(12.dp))
-                    .padding(horizontal = 14.dp, vertical = 10.dp)
+                .clip(RoundedCornerShape(12.dp))
+                .background(Color(0x2000F2FE))
+                .border(1.dp, VayuCyan.copy(alpha = 0.5f), RoundedCornerShape(12.dp))
+                .padding(horizontal = 14.dp, vertical = 10.dp)
             ) {
                 Text(
                     text = "Use arrows to reorder cards • Layout persists automatically",
                     fontSize = 12.sp,
                     color = VayuCyan,
                     fontWeight = FontWeight.Medium
+                )
+            }
+        }
+
+        // Fitbit Sync Needed Card (Fitbit selected but no records found)
+        if (state.isFitbitSyncNeeded) {
+            Spacer(modifier = Modifier.height(6.dp))
+            FitbitSyncNeededCard(
+                state = state,
+                onRefresh = { viewModel.loadMetrics(forceRefresh = true) },
+                onOpenSourceSettings = { showSourceDialog = true }
+            )
+        }
+
+        // Mixed-Source Mode Warning Banner
+        if (state.selectedSource == null) {
+            Spacer(modifier = Modifier.height(6.dp))
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(Color(0x20FF9100))
+                    .border(0.5.dp, EnergyAmber.copy(alpha = 0.5f), RoundedCornerShape(12.dp))
+                    .padding(horizontal = 12.dp, vertical = 8.dp)
+            ) {
+                Text(
+                    text = "Mixed-Source Mode: Showing aggregated data across all connected apps. Tap the source button above to restrict to Fitbit only.",
+                    fontSize = 11.sp,
+                    color = TextPrimary
                 )
             }
         }
@@ -250,45 +347,57 @@ fun DashboardScreen(
                     }
                 }
 
+                // Edit Mode Reorder Arrows
                 if (isEditMode) {
                     Row(
                         modifier = Modifier
                             .align(Alignment.TopEnd)
-                            .padding(12.dp),
-                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                            .padding(10.dp),
+                        horizontalArrangement = Arrangement.spacedBy(4.dp)
                     ) {
                         if (index > 0) {
                             IconButton(
                                 onClick = {
-                                    val mutable = cardOrder.toMutableList()
-                                    val item = mutable.removeAt(index)
-                                    mutable.add(index - 1, item)
-                                    cardOrder = mutable
-                                    prefs.edit().putString("card_order", mutable.joinToString(",") { it.name }).apply()
+                                    val newOrder = cardOrder.toMutableList()
+                                    val item = newOrder.removeAt(index)
+                                    newOrder.add(index - 1, item)
+                                    cardOrder = newOrder
+                                    prefs.edit().putString("card_order", newOrder.joinToString(",") { it.name }).apply()
                                 },
                                 modifier = Modifier
                                     .size(28.dp)
                                     .clip(CircleShape)
-                                    .background(Color(0x33FFFFFF))
+                                    .background(Color(0x4000F2FE))
                             ) {
-                                Icon(Icons.Default.ArrowUpward, contentDescription = "Move Card Up", tint = TextPrimary, modifier = Modifier.size(14.dp))
+                                Icon(
+                                    imageVector = Icons.Default.ArrowUpward,
+                                    contentDescription = "Move Up",
+                                    tint = SpaceBlack,
+                                    modifier = Modifier.size(14.dp)
+                                )
                             }
                         }
+
                         if (index < cardOrder.size - 1) {
                             IconButton(
                                 onClick = {
-                                    val mutable = cardOrder.toMutableList()
-                                    val item = mutable.removeAt(index)
-                                    mutable.add(index + 1, item)
-                                    cardOrder = mutable
-                                    prefs.edit().putString("card_order", mutable.joinToString(",") { it.name }).apply()
+                                    val newOrder = cardOrder.toMutableList()
+                                    val item = newOrder.removeAt(index)
+                                    newOrder.add(index + 1, item)
+                                    cardOrder = newOrder
+                                    prefs.edit().putString("card_order", newOrder.joinToString(",") { it.name }).apply()
                                 },
                                 modifier = Modifier
                                     .size(28.dp)
                                     .clip(CircleShape)
-                                    .background(Color(0x33FFFFFF))
+                                    .background(Color(0x4000F2FE))
                             ) {
-                                Icon(Icons.Default.ArrowDownward, contentDescription = "Move Card Down", tint = TextPrimary, modifier = Modifier.size(14.dp))
+                                Icon(
+                                    imageVector = Icons.Default.ArrowDownward,
+                                    contentDescription = "Move Down",
+                                    tint = SpaceBlack,
+                                    modifier = Modifier.size(14.dp)
+                                )
                             }
                         }
                     }
@@ -296,44 +405,354 @@ fun DashboardScreen(
             }
         }
 
-        Spacer(modifier = Modifier.height(30.dp))
+        Spacer(modifier = Modifier.height(80.dp))
     }
 }
 
+// SETUP CARD: Fitbit Sync Needed
+@Composable
+fun FitbitSyncNeededCard(
+    state: HealthDashboardState,
+    onRefresh: () -> Unit,
+    onOpenSourceSettings: () -> Unit
+) {
+    GlassCard(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 6.dp),
+        backgroundColor = Color(0x351F1A12),
+        borderBrush = Brush.linearGradient(
+            listOf(EnergyAmber.copy(alpha = 0.8f), GlassBorder)
+        )
+    ) {
+        Column {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Box(
+                    modifier = Modifier
+                        .size(34.dp)
+                        .clip(CircleShape)
+                        .background(EnergyAmber.copy(alpha = 0.2f)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Sync,
+                        contentDescription = "Fitbit Sync Needed",
+                        tint = EnergyAmber,
+                        modifier = Modifier.size(18.dp)
+                    )
+                }
+                Spacer(modifier = Modifier.width(10.dp))
+                Column {
+                    Text(
+                        text = "Fitbit Health Connect Sync Needed",
+                        fontWeight = FontWeight.Bold,
+                        color = TextPrimary,
+                        fontSize = 14.sp
+                    )
+                    Text(
+                        text = "Fitbit-only filter active (${state.selectedSource})",
+                        fontSize = 11.sp,
+                        color = TextMuted
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.height(10.dp))
+
+            Text(
+                text = "No records from Fitbit were found in Health Connect. Vayu strictly displays only original Fitbit records and never uses data from other apps as a substitute.\n\nTo view your wearable data:\n1. Open the Fitbit app on your Galaxy S25 Ultra.\n2. Confirm Health Connect sync is turned ON in Fitbit settings.\n3. Allow Fitbit a moment to sync your steps, sleep, and heart rate.",
+                fontSize = 12.sp,
+                color = TextSecondary,
+                lineHeight = 17.sp
+            )
+
+            Spacer(modifier = Modifier.height(14.dp))
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                Button(
+                    onClick = onRefresh,
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = VayuCyan,
+                        contentColor = SpaceBlack
+                    ),
+                    shape = RoundedCornerShape(12.dp),
+                    modifier = Modifier.weight(1.3f)
+                ) {
+                    Text("Check for Fitbit Data", fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                }
+
+                OutlinedButton(
+                    onClick = onOpenSourceSettings,
+                    colors = ButtonDefaults.outlinedButtonColors(
+                        contentColor = TextPrimary
+                    ),
+                    border = BorderStroke(1.dp, GlassBorder),
+                    shape = RoundedCornerShape(12.dp),
+                    modifier = Modifier.weight(1f)
+                ) {
+                    Text("Source Settings", fontSize = 12.sp)
+                }
+            }
+        }
+    }
+}
+
+// SOURCE SELECTION DIALOG
+@Composable
+fun SourceSelectionDialog(
+    state: HealthDashboardState,
+    currentSelected: String?,
+    onSelectSource: (String?) -> Unit,
+    onDismiss: () -> Unit
+) {
+    var selectedPackage by remember { mutableStateOf(currentSelected) }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(
+                    imageVector = Icons.Default.FilterList,
+                    contentDescription = null,
+                    tint = VayuCyan,
+                    modifier = Modifier.size(20.dp)
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+                Text(
+                    text = "Health Connect Data Source",
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 17.sp,
+                    color = TextPrimary
+                )
+            }
+        },
+        text = {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                Text(
+                    text = "Vayu is designed to display only authentic records written by your wearable. Select which Health Connect DataOrigin package Vayu should display:",
+                    fontSize = 12.sp,
+                    color = TextSecondary,
+                    lineHeight = 16.sp
+                )
+
+                Spacer(modifier = Modifier.height(4.dp))
+
+                Text(
+                    text = "FITBIT SOURCES (RECOMMENDED)",
+                    fontSize = 10.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = VayuCyan,
+                    letterSpacing = 0.5.sp
+                )
+
+                val fitbitPackages = state.detectedSources.filter { it.contains("fitbit", ignoreCase = true) }.toSet()
+                val packagesToShow = if (fitbitPackages.isNotEmpty()) fitbitPackages else setOf("com.fitbit.FitbitMobile")
+
+                packagesToShow.forEach { pkg ->
+                    val isSelected = selectedPackage == pkg
+                    val isDetected = state.detectedSources.contains(pkg)
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(12.dp))
+                            .background(if (isSelected) Color(0x2000F2FE) else Color(0x10FFFFFF))
+                            .border(1.dp, if (isSelected) VayuCyan else Color(0x18FFFFFF), RoundedCornerShape(12.dp))
+                            .clickable { selectedPackage = pkg }
+                            .padding(12.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        RadioButton(
+                            selected = isSelected,
+                            onClick = { selectedPackage = pkg },
+                            colors = RadioButtonDefaults.colors(selectedColor = VayuCyan, unselectedColor = TextMuted)
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Column(modifier = Modifier.weight(1f)) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Text(
+                                    text = if (pkg == "com.fitbit.FitbitMobile") "Fitbit Mobile" else pkg,
+                                    fontSize = 13.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = TextPrimary
+                                )
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Box(
+                                    modifier = Modifier
+                                        .clip(RoundedCornerShape(6.dp))
+                                        .background(if (isDetected) VayuCyan.copy(alpha = 0.2f) else EnergyAmber.copy(alpha = 0.2f))
+                                        .padding(horizontal = 6.dp, vertical = 2.dp)
+                                ) {
+                                    Text(
+                                        text = if (isDetected) "Detected" else "Default",
+                                        fontSize = 9.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = if (isDetected) VayuCyan else EnergyAmber
+                                    )
+                                }
+                            }
+                            Text(
+                                text = pkg,
+                                fontSize = 10.sp,
+                                color = TextMuted
+                            )
+                        }
+                    }
+                }
+
+                val otherSources = state.detectedSources.filter { !it.contains("fitbit", ignoreCase = true) }
+                if (otherSources.isNotEmpty()) {
+                    Spacer(modifier = Modifier.height(6.dp))
+                    Text(
+                        text = "OTHER DETECTED PACKAGES",
+                        fontSize = 10.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = TextMuted,
+                        letterSpacing = 0.5.sp
+                    )
+
+                    otherSources.forEach { pkg ->
+                        val isSelected = selectedPackage == pkg
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(12.dp))
+                                .background(if (isSelected) Color(0x2000F2FE) else Color(0x0CFFFFFF))
+                                .border(1.dp, if (isSelected) VayuCyan else Color(0x10FFFFFF), RoundedCornerShape(12.dp))
+                                .clickable { selectedPackage = pkg }
+                                .padding(12.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            RadioButton(
+                                selected = isSelected,
+                                onClick = { selectedPackage = pkg },
+                                colors = RadioButtonDefaults.colors(selectedColor = VayuCyan, unselectedColor = TextMuted)
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(text = pkg, fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = TextPrimary)
+                            }
+                        }
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(6.dp))
+                Text(
+                    text = "MIXED-SOURCE MODE",
+                    fontSize = 10.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = EnergyAmber,
+                    letterSpacing = 0.5.sp
+                )
+
+                val isAllSelected = selectedPackage == null
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(12.dp))
+                        .background(if (isAllSelected) Color(0x20FF9100) else Color(0x0CFFFFFF))
+                        .border(1.dp, if (isAllSelected) EnergyAmber else Color(0x10FFFFFF), RoundedCornerShape(12.dp))
+                        .clickable { selectedPackage = null }
+                        .padding(12.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    RadioButton(
+                        selected = isAllSelected,
+                        onClick = { selectedPackage = null },
+                        colors = RadioButtonDefaults.colors(selectedColor = EnergyAmber, unselectedColor = TextMuted)
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(text = "All Health Connect Sources", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = TextPrimary)
+                        Text(
+                            text = "Warning: Aggregates records across all installed health apps. Not restricted to Fitbit.",
+                            fontSize = 10.sp,
+                            color = EnergyAmber,
+                            lineHeight = 14.sp
+                        )
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = { onSelectSource(selectedPackage) },
+                colors = ButtonDefaults.buttonColors(containerColor = VayuCyan, contentColor = SpaceBlack),
+                shape = RoundedCornerShape(12.dp)
+            ) {
+                Text("Confirm Selection", fontWeight = FontWeight.Bold, fontSize = 12.sp)
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Cancel", color = TextSecondary, fontSize = 12.sp)
+            }
+        },
+        containerColor = Color(0xFF141822),
+        shape = RoundedCornerShape(20.dp)
+    )
+}
+
+// IN-APP PRIVACY POLICY DIALOG
 @Composable
 fun PrivacyPolicyDialog(onDismiss: () -> Unit) {
     AlertDialog(
         onDismissRequest = onDismiss,
         confirmButton = {
-            TextButton(onClick = onDismiss) {
-                Text("Got It", color = VayuCyan, fontWeight = FontWeight.Bold)
+            Button(
+                onClick = onDismiss,
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = VayuCyan,
+                    contentColor = SpaceBlack
+                ),
+                shape = RoundedCornerShape(12.dp)
+            ) {
+                Text("Understood", fontWeight = FontWeight.Bold, fontSize = 12.sp)
             }
         },
         title = {
-            Text(
-                text = "Privacy & Transparency Policy",
-                fontSize = 18.sp,
-                fontWeight = FontWeight.Bold,
-                color = TextPrimary
-            )
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(
+                    imageVector = Icons.Default.Info,
+                    contentDescription = null,
+                    tint = VayuCyan,
+                    modifier = Modifier.size(20.dp)
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+                Text(
+                    text = "Privacy & Data Policy",
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 17.sp,
+                    color = TextPrimary
+                )
+            }
         },
         text = {
             Column(
-                modifier = Modifier.verticalScroll(rememberScrollState()),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .verticalScroll(rememberScrollState()),
                 verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
                 Text(
-                    text = "• Read-Only Pass-Through: Vayu operates purely as a local viewer for Google Health Connect. It cannot modify, insert, or delete any health records.",
+                    text = "• Pure Read-Only Visualizer: Vayu connects directly to Google Health Connect to display authentic records written by your wearable. It never writes or alters data.",
                     fontSize = 13.sp,
                     color = TextSecondary
                 )
                 Text(
-                    text = "• 100% On-Device: Absolutely no network permissions exist in Vayu. Health records never leave your Samsung Galaxy S25 Ultra.",
+                    text = "• Zero Cloud / No Servers: Vayu does not request Internet permission (android.permission.INTERNET). Zero data leaves your device. No analytics, tracking SDKs, or cloud synchronization.",
                     fontSize = 13.sp,
                     color = TextSecondary
                 )
                 Text(
-                    text = "• Zero Tracking / Zero Accounts: No analytics, advertising SDKs, cloud synchronization, or accounts are used.",
+                    text = "• On-Device Processing: Health data is processed purely in volatile memory during the active session. Backup and device transfer of health data are explicitly disabled.",
                     fontSize = 13.sp,
                     color = TextSecondary
                 )
@@ -343,7 +762,7 @@ fun PrivacyPolicyDialog(onDismiss: () -> Unit) {
                     color = TextSecondary
                 )
                 Text(
-                    text = "• Non-Medical Disclaimer: Vayu is for visualization and informational purposes only. It is not a medical device and provides no medical diagnosis, interpretation, or advice. Always consult a healthcare professional for clinical advice.",
+                    text = "• Non-Medical Disclaimer: Vayu is for personal informational purposes only. It is not a medical device and provides no medical diagnosis, interpretation, or advice.",
                     fontSize = 13.sp,
                     color = TextMuted,
                     fontWeight = FontWeight.Medium
@@ -379,7 +798,7 @@ fun SleepSessionCard(state: HealthDashboardState, viewModel: HealthDashboardView
                     letterSpacing = 1.sp
                 )
                 Text(
-                    text = sleep?.sourcePackage ?: "Health Connect",
+                    text = sleep?.sourcePackage ?: (state.selectedSource ?: "Health Connect"),
                     fontSize = 10.sp,
                     color = TextMuted
                 )
@@ -388,59 +807,73 @@ fun SleepSessionCard(state: HealthDashboardState, viewModel: HealthDashboardView
             Spacer(modifier = Modifier.height(10.dp))
 
             if (sleep != null) {
+                val actualMins = sleep.actualSleepDurationMinutes
+
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(16.dp)
+                    horizontalArrangement = Arrangement.spacedBy(14.dp)
                 ) {
-                    val actualMins = sleep.actualSleepDurationMinutes
-                    val displayMins = actualMins ?: sleep.sessionElapsedMinutes
-
-                    Box(
-                        modifier = Modifier.size(90.dp),
-                        contentAlignment = Alignment.Center
+                    // Actual Sleep Hero Box
+                    Column(
+                        modifier = Modifier
+                            .weight(1f)
+                            .clip(RoundedCornerShape(16.dp))
+                            .background(Color(0x18818CF8))
+                            .border(1.dp, Color(0xFF818CF8).copy(alpha = 0.3f), RoundedCornerShape(16.dp))
+                            .padding(vertical = 12.dp, horizontal = 12.dp),
+                        horizontalAlignment = Alignment.Start
                     ) {
-                        CircularProgressRing(
-                            progress = (displayMins / 480f).coerceIn(0.05f, 1f),
-                            ringColor = Color(0xFF818CF8),
-                            strokeWidth = 8.dp,
-                            centerValue = "${displayMins / 60}h ${displayMins % 60}m",
-                            modifier = Modifier.fillMaxSize()
+                        Text(
+                            text = "ACTUAL SLEEP",
+                            fontSize = 10.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = Color(0xFFA5B4FC),
+                            letterSpacing = 0.5.sp
+                        )
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text(
+                            text = actualMins?.let { "${it / 60}h ${it % 60}m" } ?: "Data unavailable",
+                            fontSize = 20.sp,
+                            fontWeight = FontWeight.ExtraBold,
+                            color = if (actualMins != null) TextPrimary else TextUnavailable
+                        )
+                        Text(
+                            text = if (actualMins != null) "Fitbit recorded duration" else "No stage records",
+                            fontSize = 10.sp,
+                            color = TextMuted
                         )
                     }
 
-                    Column(modifier = Modifier.weight(1f)) {
-                        if (actualMins != null) {
-                            Text(
-                                text = "Actual Sleep: ${actualMins / 60}h ${actualMins % 60}m",
-                                fontSize = 13.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = TextPrimary
-                            )
-                            Text(
-                                text = "Session Elapsed: ${sleep.sessionElapsedMinutes / 60}h ${sleep.sessionElapsedMinutes % 60}m",
-                                fontSize = 11.sp,
-                                color = TextSecondary
-                            )
-                        } else {
-                            Text(
-                                text = "Session Elapsed: ${sleep.sessionElapsedMinutes / 60}h ${sleep.sessionElapsedMinutes % 60}m",
-                                fontSize = 13.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = TextPrimary
-                            )
-                            Text(
-                                text = "No sleep stage records reported",
-                                fontSize = 11.sp,
-                                color = TextMuted
-                            )
-                        }
-
-                        Spacer(modifier = Modifier.height(4.dp))
+                    // Session Elapsed & Timing Box
+                    Column(
+                        modifier = Modifier.weight(1.1f),
+                        verticalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
                         Text(
-                            text = "Start: ${viewModel.formatTime(sleep.startTime)} • End: ${viewModel.formatTime(sleep.endTime)}",
+                            text = "SESSION ELAPSED",
                             fontSize = 10.sp,
-                            color = TextMuted
+                            fontWeight = FontWeight.Bold,
+                            color = TextMuted,
+                            letterSpacing = 0.5.sp
+                        )
+                        Text(
+                            text = "${sleep.sessionElapsedMinutes / 60}h ${sleep.sessionElapsedMinutes % 60}m",
+                            fontSize = 16.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = TextPrimary
+                        )
+                        Spacer(modifier = Modifier.height(2.dp))
+                        Text(
+                            text = "${viewModel.formatTime(sleep.startTime)} – ${viewModel.formatTime(sleep.endTime)}",
+                            fontSize = 11.sp,
+                            color = TextSecondary
+                        )
+                        Text(
+                            text = sleep.sourcePackage,
+                            fontSize = 10.sp,
+                            color = TextMuted,
+                            maxLines = 1
                         )
                     }
                 }
@@ -457,7 +890,7 @@ fun SleepSessionCard(state: HealthDashboardState, viewModel: HealthDashboardView
                     color = TextUnavailable
                 )
                 Text(
-                    text = "No sleep session recorded in the past 24 hours",
+                    text = "No sleep session recorded by ${state.selectedSource ?: "Health Connect"} today",
                     fontSize = 11.sp,
                     color = TextMuted,
                     modifier = Modifier.padding(top = 2.dp)
@@ -471,6 +904,7 @@ fun SleepSessionCard(state: HealthDashboardState, viewModel: HealthDashboardView
 @Composable
 fun DailyActivityCard(state: HealthDashboardState) {
     val activity = state.activity
+    val isFiltered = state.selectedSource != null
 
     GlassCard(
         modifier = Modifier.fillMaxWidth(),
@@ -484,17 +918,17 @@ fun DailyActivityCard(state: HealthDashboardState) {
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Text(
-                    text = "HEALTH CONNECT AGGREGATED TOTAL",
+                    text = if (isFiltered) "FITBIT HEALTH CONNECT TOTAL FOR TODAY" else "HEALTH CONNECT AGGREGATED TOTAL",
                     fontSize = 11.sp,
                     fontWeight = FontWeight.Bold,
                     color = TextMuted,
-                    letterSpacing = 1.sp
+                    letterSpacing = 0.5.sp
                 )
-                val sourcesLabel = if (activity?.sources?.isNotEmpty() == true) {
+                val sourcesLabel = state.selectedSource ?: (if (activity?.sources?.isNotEmpty() == true) {
                     if (activity.sources.size == 1) activity.sources.first() else "Mixed (${activity.sources.size} sources)"
                 } else {
                     "Health Connect"
-                }
+                })
                 Text(
                     text = sourcesLabel,
                     fontSize = 10.sp,
@@ -505,29 +939,40 @@ fun DailyActivityCard(state: HealthDashboardState) {
             Spacer(modifier = Modifier.height(10.dp))
 
             if (activity != null) {
+                val steps = activity.steps
+
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(16.dp)
+                    horizontalArrangement = Arrangement.spacedBy(14.dp)
                 ) {
-                    val steps = activity.steps
-                    if (steps != null) {
-                        Box(
-                            modifier = Modifier.size(90.dp),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            CircularProgressRing(
-                                progress = (steps / 10000f).coerceIn(0.05f, 1f),
-                                ringColor = VayuCyan,
-                                strokeWidth = 8.dp,
-                                centerValue = "%,d".format(steps),
-                                centerLabel = "STEPS",
-                                modifier = Modifier.fillMaxSize()
-                            )
-                        }
+                    // Steps Hero Box (No fabricated 10k target percentage ring)
+                    Column(
+                        modifier = Modifier
+                            .weight(1f)
+                            .clip(RoundedCornerShape(16.dp))
+                            .background(Color(0x1400F2FE))
+                            .border(1.dp, VayuCyan.copy(alpha = 0.3f), RoundedCornerShape(16.dp))
+                            .padding(vertical = 12.dp, horizontal = 12.dp),
+                        horizontalAlignment = Alignment.Start
+                    ) {
+                        Text("STEPS", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = VayuCyan, letterSpacing = 1.sp)
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text(
+                            text = steps?.let { "%,d".format(it) } ?: "Data unavailable",
+                            fontSize = 22.sp,
+                            fontWeight = FontWeight.ExtraBold,
+                            color = if (steps != null) TextPrimary else TextUnavailable
+                        )
+                        Text(
+                            text = if (steps != null) "Fitbit recorded count" else "No steps today",
+                            fontSize = 10.sp,
+                            color = TextMuted
+                        )
                     }
 
-                    Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    // Distance, Active & Total Energy Column
+                    Column(modifier = Modifier.weight(1.2f), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                         Row(
                             modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.SpaceBetween
@@ -567,7 +1012,7 @@ fun DailyActivityCard(state: HealthDashboardState) {
                     }
                 }
 
-                if (activity.sources.size > 1) {
+                if (!isFiltered && activity.sources.size > 1) {
                     Spacer(modifier = Modifier.height(8.dp))
                     Text(
                         text = "Contributing sources: ${activity.sources.joinToString(", ")}",
@@ -583,7 +1028,7 @@ fun DailyActivityCard(state: HealthDashboardState) {
                     color = TextUnavailable
                 )
                 Text(
-                    text = "No activity records found today",
+                    text = "No activity records found from ${state.selectedSource ?: "Health Connect"} today",
                     fontSize = 11.sp,
                     color = TextMuted,
                     modifier = Modifier.padding(top = 2.dp)
@@ -620,7 +1065,7 @@ fun HeartRateCurveCard(state: HealthDashboardState, viewModel: HealthDashboardVi
                     val hrSourceText = if ((hr?.sources?.size ?: 0) > 1) {
                         "Health Connect (mixed: ${hr?.sources?.joinToString(", ")})"
                     } else {
-                        hr?.sourcePackage ?: "Health Connect"
+                        hr?.sourcePackage ?: (state.selectedSource ?: "Health Connect")
                     }
                     Text(
                         text = hrSourceText,
@@ -676,6 +1121,13 @@ fun HeartRateCurveCard(state: HealthDashboardState, viewModel: HealthDashboardVi
                         Text(hr.maxBpm?.let { "$it bpm" } ?: "--", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = HeartCrimson)
                     }
                 }
+
+                Spacer(modifier = Modifier.height(4.dp))
+                Text(
+                    text = "Calculated from actual timestamped Fitbit pulse samples • Updates when Fitbit syncs",
+                    fontSize = 9.sp,
+                    color = TextMuted
+                )
             } else {
                 Text(
                     text = "Data unavailable",
@@ -684,7 +1136,7 @@ fun HeartRateCurveCard(state: HealthDashboardState, viewModel: HealthDashboardVi
                     color = TextUnavailable
                 )
                 Text(
-                    text = "No heart rate records today",
+                    text = "No heart rate records from ${state.selectedSource ?: "Health Connect"} today",
                     fontSize = 11.sp,
                     color = TextMuted,
                     modifier = Modifier.padding(top = 2.dp)
@@ -704,7 +1156,7 @@ fun RestingHrAndHrvCard(state: HealthDashboardState) {
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.spacedBy(10.dp)
     ) {
-        // Resting Heart Rate
+        // Resting HR
         GlassCard(
             modifier = Modifier.weight(1f),
             backgroundColor = Color(0xFF0E1015),
@@ -727,7 +1179,7 @@ fun RestingHrAndHrvCard(state: HealthDashboardState) {
             }
         }
 
-        // HRV RMSSD
+        // HRV
         GlassCard(
             modifier = Modifier.weight(1f),
             backgroundColor = Color(0xFF0E1015),
@@ -752,7 +1204,7 @@ fun RestingHrAndHrvCard(state: HealthDashboardState) {
     }
 }
 
-// CARD 5: 7-Day Sleep History (Strictly from recorded sessions)
+// CARD 5: 7-Day Sleep History
 @Composable
 fun SleepHistory7DaysCard(state: HealthDashboardState) {
     val history = state.dailySleepHistory
@@ -769,65 +1221,95 @@ fun SleepHistory7DaysCard(state: HealthDashboardState) {
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Text(
-                    text = "SLEEP HISTORY (7 DAYS)",
+                    text = "7-DAY SLEEP HISTORY",
                     fontSize = 11.sp,
                     fontWeight = FontWeight.Bold,
                     color = TextMuted,
                     letterSpacing = 1.sp
                 )
-                val recordedMinutes = history.mapNotNull { it.actualSleepMinutes }
-                if (recordedMinutes.isNotEmpty()) {
-                    val avgMinutes = recordedMinutes.average().toLong()
-                    Text(
-                        text = "Avg: ${avgMinutes / 60}h ${avgMinutes % 60}m",
-                        fontSize = 11.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = Color(0xFF818CF8)
-                    )
-                }
+                Text(
+                    text = state.selectedSource ?: "Health Connect",
+                    fontSize = 10.sp,
+                    color = TextMuted
+                )
             }
 
-            Spacer(modifier = Modifier.height(12.dp))
+            Spacer(modifier = Modifier.height(10.dp))
 
             if (history.isNotEmpty()) {
-                val dayFormatter = DateTimeFormatter.ofPattern("E")
-                val barPoints = history.map { summary ->
-                    val actual = summary.actualSleepMinutes
-                    BarDataPoint(
-                        label = summary.date.format(dayFormatter).take(1),
-                        value = actual?.let { it / 60f } ?: 0f,
-                        formattedValue = if (actual != null) {
-                            "${actual / 60}h ${actual % 60}m"
-                        } else {
-                            "Elapsed: ${summary.sessionElapsedMinutes / 60}h ${summary.sessionElapsedMinutes % 60}m"
+                val dayFormatter = DateTimeFormatter.ofPattern("EEE")
+                val dateFormatter = DateTimeFormatter.ofPattern("M/d")
+
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    history.forEach { summary ->
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(8.dp))
+                                .background(Color(0x08FFFFFF))
+                                .padding(horizontal = 10.dp, vertical = 6.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Column {
+                                Text(
+                                    text = "${summary.date.format(dayFormatter)} ${summary.date.format(dateFormatter)}",
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = TextPrimary
+                                )
+                                val sessionCountLabel = if (summary.sessionCount > 1) {
+                                    "${summary.sessionCount} sessions • ${summary.sourcePackage}"
+                                } else {
+                                    summary.sourcePackage
+                                }
+                                Text(
+                                    text = sessionCountLabel,
+                                    fontSize = 9.sp,
+                                    color = TextMuted
+                                )
+                            }
+
+                            Column(horizontalAlignment = Alignment.End) {
+                                val actual = summary.actualSleepMinutes
+                                if (actual != null) {
+                                    Text(
+                                        text = "${actual / 60}h ${actual % 60}m",
+                                        fontSize = 13.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = VayuCyan
+                                    )
+                                    Text(
+                                        text = "Elapsed: ${summary.sessionElapsedMinutes / 60}h ${summary.sessionElapsedMinutes % 60}m",
+                                        fontSize = 10.sp,
+                                        color = TextMuted
+                                    )
+                                } else {
+                                    Text(
+                                        text = "Data unavailable",
+                                        fontSize = 12.sp,
+                                        fontWeight = FontWeight.SemiBold,
+                                        color = TextUnavailable
+                                    )
+                                    Text(
+                                        text = "Elapsed: ${summary.sessionElapsedMinutes / 60}h ${summary.sessionElapsedMinutes % 60}m",
+                                        fontSize = 10.sp,
+                                        color = TextMuted
+                                    )
+                                }
+                            }
                         }
-                    )
-                }
-
-                MiniBarChart(
-                    points = barPoints,
-                    primaryColor = Color(0xFF818CF8),
-                    chartHeight = 85.dp
-                )
-
-                val multiSessionDays = history.filter { it.sessionCount > 1 }
-                if (multiSessionDays.isNotEmpty()) {
-                    Spacer(modifier = Modifier.height(6.dp))
-                    Text(
-                        text = "Multiple sessions recorded on ${multiSessionDays.size} day(s)",
-                        fontSize = 10.sp,
-                        color = TextMuted
-                    )
+                    }
                 }
             } else {
                 Text(
                     text = "Data unavailable",
-                    fontSize = 16.sp,
-                    fontWeight = FontWeight.SemiBold,
+                    fontSize = 18.sp,
+                    fontWeight = FontWeight.Bold,
                     color = TextUnavailable
                 )
                 Text(
-                    text = "No sleep history recorded for the past 7 days",
+                    text = "No sleep sessions recorded by ${state.selectedSource ?: "Health Connect"} in the last 7 days",
                     fontSize = 11.sp,
                     color = TextMuted,
                     modifier = Modifier.padding(top = 2.dp)
@@ -863,7 +1345,7 @@ fun RespiratoryAndTempCard(state: HealthDashboardState) {
                         Spacer(modifier = Modifier.width(3.dp))
                         Text("%", fontSize = 11.sp, color = TextMuted)
                     }
-                    Text(resp.spo2SourcePackage ?: "Health Connect", fontSize = 9.sp, color = TextMuted, maxLines = 1)
+                    Text(resp.spo2SourcePackage ?: (state.selectedSource ?: "Health Connect"), fontSize = 9.sp, color = TextMuted, maxLines = 1)
                 } else {
                     Text("Data unavailable", fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = TextUnavailable)
                     Text("No record today", fontSize = 10.sp, color = TextMuted)
@@ -878,23 +1360,21 @@ fun RespiratoryAndTempCard(state: HealthDashboardState) {
             borderBrush = SolidColor(Color(0x18FFFFFF))
         ) {
             Column {
-                Text("SKIN TEMPERATURE", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = TextMuted, letterSpacing = 0.5.sp)
+                Text("SKIN TEMP DEVIATION", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = TextMuted, letterSpacing = 0.5.sp)
                 Spacer(modifier = Modifier.height(6.dp))
-                if (!state.isSkinTemperatureSupported) {
-                    Text("Unsupported", fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = TextMuted)
-                    Text("Feature unavailable", fontSize = 10.sp, color = TextMuted)
-                } else if (skinTemp?.averageDeltaCelsius != null) {
-                    val avg = skinTemp.averageDeltaCelsius
-                    val sign = if (avg >= 0) "+" else ""
+                if (skinTemp != null && skinTemp.averageDeltaCelsius != null) {
+                    val delta = skinTemp.averageDeltaCelsius
+                    val sign = if (delta >= 0) "+" else ""
                     Row(verticalAlignment = Alignment.Bottom) {
-                        Text("$sign${"%.2f".format(avg)}", fontSize = 22.sp, fontWeight = FontWeight.Bold, color = SkinTempPurple)
+                        Text("$sign%.2f".format(delta), fontSize = 24.sp, fontWeight = FontWeight.Bold, color = if (delta >= 0) EnergyAmber else VayuCyan)
                         Spacer(modifier = Modifier.width(3.dp))
                         Text("°C", fontSize = 11.sp, color = TextMuted)
                     }
                     Text(skinTemp.sourcePackage, fontSize = 9.sp, color = TextMuted, maxLines = 1)
                 } else {
                     Text("Data unavailable", fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = TextUnavailable)
-                    Text("No record in window", fontSize = 10.sp, color = TextMuted)
+                    val caption = if (!state.isSkinTemperatureSupported) "Sensor unsupported" else "No record today"
+                    Text(caption, fontSize = 10.sp, color = TextMuted)
                 }
             }
         }

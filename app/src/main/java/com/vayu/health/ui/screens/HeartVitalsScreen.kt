@@ -52,9 +52,14 @@ fun HeartVitalsScreen(
                 fontWeight = FontWeight.Bold,
                 color = TextPrimary
             )
+            val pillText = if (state.selectedSource != null) {
+                if (state.selectedSource.contains("fitbit", ignoreCase = true)) "Fitbit" else state.selectedSource
+            } else {
+                "All Sources"
+            }
             GlassPill(
-                text = "Biometrics",
-                dotColor = HeartCrimson
+                text = pillText,
+                dotColor = if (state.selectedSource != null) VayuCyan else HeartCrimson
             )
         }
 
@@ -69,7 +74,7 @@ fun HeartVitalsScreen(
             icon = Icons.Default.Favorite,
             accentColor = HeartCrimson,
             timestamp = rhr?.let { "Recorded at ${viewModel.formatTime(it.timestamp)}" },
-            source = rhr?.sourcePackage ?: "Health Connect"
+            source = rhr?.sourcePackage ?: (state.selectedSource ?: "Health Connect")
         )
 
         Spacer(modifier = Modifier.height(14.dp))
@@ -83,7 +88,7 @@ fun HeartVitalsScreen(
             icon = Icons.Default.Timeline,
             accentColor = HrvEmerald,
             timestamp = hrv?.let { "Recorded at ${viewModel.formatTime(it.timestamp)}" },
-            source = hrv?.sourcePackage ?: "Health Connect"
+            source = hrv?.sourcePackage ?: (state.selectedSource ?: "Health Connect")
         )
 
         Spacer(modifier = Modifier.height(14.dp))
@@ -108,7 +113,7 @@ fun HeartVitalsScreen(
                         val hrSourceText = if ((hr?.sources?.size ?: 0) > 1) {
                             "Health Connect (mixed: ${hr?.sources?.joinToString(", ")})"
                         } else {
-                            hr?.sourcePackage ?: "Health Connect"
+                            hr?.sourcePackage ?: (state.selectedSource ?: "Health Connect")
                         }
                         Text(
                             text = hrSourceText,

@@ -27,6 +27,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import com.vayu.health.data.HealthConnectManager
 import com.vayu.health.data.HealthMetricsRepository
+import com.vayu.health.data.HealthSourcePreferences
 import com.vayu.health.data.model.HealthConnectStatus
 import com.vayu.health.ui.components.GlassCard
 import com.vayu.health.ui.components.GlassTabBar
@@ -39,13 +40,14 @@ class MainActivity : ComponentActivity() {
 
     private lateinit var healthConnectManager: HealthConnectManager
     private lateinit var repository: HealthMetricsRepository
+    private lateinit var sourcePreferences: HealthSourcePreferences
     private lateinit var requestPermissionsLauncher: ActivityResultLauncher<Set<String>>
 
     private val viewModel: HealthDashboardViewModel by viewModels {
         object : ViewModelProvider.Factory {
             @Suppress("UNCHECKED_CAST")
             override fun <T : ViewModel> create(modelClass: Class<T>): T {
-                return HealthDashboardViewModel(repository) as T
+                return HealthDashboardViewModel(repository, sourcePreferences) as T
             }
         }
     }
@@ -55,6 +57,7 @@ class MainActivity : ComponentActivity() {
 
         healthConnectManager = HealthConnectManager(this)
         repository = HealthMetricsRepository(healthConnectManager)
+        sourcePreferences = HealthSourcePreferences(this)
 
         // Health Connect Permissions Contract
         val requestPermissionsContract = PermissionController.createRequestPermissionResultContract()

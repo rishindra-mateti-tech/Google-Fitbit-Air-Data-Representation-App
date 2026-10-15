@@ -63,20 +63,32 @@ fun SleepScreen(
 
         Spacer(modifier = Modifier.height(18.dp))
 
-        // Total Duration Tile
+        // Actual Sleep Duration Tile
         val actualSleepStr = sleep?.actualSleepDurationMinutes?.let { viewModel.formatDuration(it) }
         val sessionElapsedStr = sleep?.sessionElapsedMinutes?.let { viewModel.formatDuration(it) }
 
         MetricTile(
-            title = if (actualSleepStr != null) "Actual Sleep Duration" else "Session Elapsed Time",
-            value = actualSleepStr ?: sessionElapsedStr,
+            title = "Actual Sleep Duration",
+            value = actualSleepStr,
             icon = Icons.Default.Bedtime,
             accentColor = SleepRem,
             timestamp = sleep?.let { "Recorded by ${it.sourcePackage}" },
-            source = sleep?.sourcePackage ?: "Health Connect"
+            source = sleep?.sourcePackage ?: (state.selectedSource ?: "Health Connect")
         )
 
         Spacer(modifier = Modifier.height(14.dp))
+
+        if (sessionElapsedStr != null) {
+            MetricTile(
+                title = "Session Elapsed Time",
+                value = sessionElapsedStr,
+                icon = Icons.Default.Info,
+                accentColor = SleepDeep,
+                timestamp = "In-bed to out-of-bed interval",
+                source = sleep.sourcePackage
+            )
+            Spacer(modifier = Modifier.height(14.dp))
+        }
 
         if (sleep != null) {
             // Timing Cards: Bedtime & Wake Time

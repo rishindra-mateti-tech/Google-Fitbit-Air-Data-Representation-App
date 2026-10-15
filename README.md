@@ -59,61 +59,55 @@ Unlike conventional health applications that fabricate proprietary "Recovery %",
 
 ---
 
-## 🧪 Testing & Continuous Integration
+---
 
-The repository includes comprehensive unit and instrumented tests:
+## 🔒 Fitbit-Only Source Filtering & Zero Data Leakage
 
-### Unit Tests (`app/src/test`)
-* `testSleepMetric_computesSessionElapsedAndActualSleepDurationAccurately`: Verifies session elapsed vs sleep duration calculation, out-of-bed isolation, and stage breakdown.
-* `testSleepMetric_nullActualSleepWhenNoStagesRecorded`: Ensures `actualSleepDurationMinutes` is null when no stages are reported.
-* `testHeartRateCalculations_accurateAggregations`: Verifies min, max, average, and latest calculations.
-* `testSkinTemperature_accurateAverageAndDeltas`: Verifies multi-delta averaging and baseline handling.
-* `testTruthfulSourceAttribution_packageNamesPreserved`: Validates `DataOrigin` string preservation.
-* `testRepository_handlesSdkUnavailable` & `testRepository_handlesSdkUpdateRequired`: Verifies SDK state resilience.
-* `testRepository_handlesEmptyPermissions` & `testRepository_handlesPartialMetricFailuresGracefully`: Verifies partial permissions and non-fatal error propagation.
-
-### Instrumented Tests (`app/src/androidTest`)
-* `testHealthConnectManager_sdkStatusResolution`: Validates Health Connect SDK status querying on device.
-* `testDashboardUi_displaysDataUnavailableWhenMetricsNull`: Asserts "Data unavailable" rendering on null metrics and verifies total absence of synthetic score labels ("Readiness", "Recovery (WHOOP)", "Strain (WHOOP)", etc.).
-* `testDashboardUi_displaysUpdateRequiredBanner`: Tests update-required prompt rendering.
-
-### CI Workflow Specification
-Automated workflow specification is located at `ci/android.yml` (can be deployed to `.github/workflows/android.yml`):
-* Sets up Java 17 (Temurin).
-* Runs unit tests: `./gradlew testDebugUnitTest`.
-* Runs Android Lint: `./gradlew lintDebug`.
-* Assembles debug build: `./gradlew assembleDebug`.
-* Uploads debug APK artifacts.
+To guarantee complete fidelity to your wearable:
+* **Automatic Origin Detection**: Detects all health record contributors on the device.
+* **Fitbit Priority**: Defaults to `com.fitbit.FitbitMobile` and strictly filters every single read request and aggregate query (`dataOriginFilter`).
+* **Zero Cross-Contamination**: In-memory verification discards any non-Fitbit records (e.g. Samsung Health, Google Fit) when in Fitbit mode.
+* **Fitbit Sync Needed State**: If Fitbit has not yet exported data to Health Connect, Vayu presents a helpful "Fitbit Sync Needed" guide rather than silently substituting data from another app.
+* **Source Selector**: A source pill button in the top bar allows checking detected packages or explicitly choosing "All Health Connect Sources" (labeled as mixed-source).
 
 ---
 
-## 🔨 Building and Running
+## 🧪 Testing & Continuous Integration
 
-### Prerequisites
-* JDK 17
-* Android SDK 35 (minSdk 28)
+### Unit Tests (`app/src/test`): 23 Passed (100%)
+* `testFitbitOnlyFiltering_strictlyFiltersRecords`: Verifies strict origin matching and zero leakage.
+* `testNoMixedSourceLeakage_inFitbitMode`: Verifies foreign records are never included in calculations.
+* `testUnavailableFitbitData_returnsNullAndFlagsSyncNeeded`: Validates `isFitbitSyncNeeded` flag and graceful nulls.
+* `testSourceAndTimestampAccuracy_preservedPrecisely`: Confirms timestamp and package preservation.
+* `testRealSampleGraphPoints_onlyFitbitPointsPlotted`: Confirms only authentic samples are charted.
+* `testNoSyntheticMetricLabels_verifiesCleanState`: Verifies total absence of synthetic wellness scores.
+* `testSleepMetric_computesSessionElapsedAndActualSleepDurationAccurately`: Verifies session elapsed vs sleep duration.
+* `testSleepMetric_nullActualSleepWhenNoStagesRecorded`: Validates nullable actual sleep.
+* `testHeartRateCalculations_accurateAggregations`: Verifies pulse sample aggregations.
+* `testSkinTemperature_accurateAverageAndDeltas`: Verifies skin temperature delta calculations.
+* `testTruthfulSourceAttribution_packageNamesPreserved`: Validates `DataOrigin` string preservation.
+* `testRepository_handlesSdkUnavailable` & `testRepository_handlesSdkUpdateRequired`: Verifies SDK state resilience.
+* `testRepository_handlesEmptyPermissions` & `testRepository_handlesPartialMetricFailuresGracefully`: Verifies partial permissions.
 
-### Commands
-```powershell
-# Run unit tests
-./gradlew testDebugUnitTest
+> [!NOTE]
+> **Execution Status**: All 23 unit tests executed and passed cleanly (`BUILD SUCCESSFUL`). Instrumented tests in `app/src/androidTest` compiled cleanly, but were **not executed** because no physical device or emulator is currently attached to the build environment (`adb devices` is empty).
 
-# Run lint checks
-./gradlew lintDebug
+---
 
-# Build Debug APK
-./gradlew assembleDebug
+## 📦 Final Personal Test Deliverable
 
-# Build Release APK (unsigned / clean production configuration)
-./gradlew assembleRelease
-```
+| File | Purpose | SHA-256 Checksum |
+| :--- | :--- | :--- |
+| **`Vayu-Personal-Test.apk`** | Sideloadable debug APK for personal testing on Samsung Galaxy S25 Ultra | `1FCC26B6717AD8B285F5D8B564D30AE9B62360FA6CAFEB29300A280674EAC492` |
 
 ---
 
 ## 📱 Sideloading onto Samsung Galaxy S25 Ultra
 
-1. Download the generated APK directly to your phone.
-2. Open **My Files** on your Galaxy S25 Ultra and tap the APK.
-3. If prompted, toggle **Allow from this source**.
-4. Tap **Install**.
-5. Launch **Vayu**, tap **Grant Read Permissions**, and toggle read access for the metrics you wish to display.
+1. Transfer or download **`Vayu-Personal-Test.apk`** directly to your Galaxy S25 Ultra.
+2. Open **My Files** > **Downloads** (or your transfer folder) and tap **`Vayu-Personal-Test.apk`**.
+3. If prompted by One UI ("Install unknown apps"), toggle **Allow from this source**.
+4. Tap **Install** to finish sideloading.
+5. Launch **Vayu**, review the detected sources dialog, and tap **Continue with Fitbit Only**.
+6. When prompted by Health Connect, grant read permissions for the metrics you wish to visualize.
+

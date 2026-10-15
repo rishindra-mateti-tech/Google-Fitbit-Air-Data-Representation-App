@@ -50,9 +50,14 @@ fun ActivityScreen(
                 fontWeight = FontWeight.Bold,
                 color = TextPrimary
             )
+            val pillText = if (state.selectedSource != null) {
+                if (state.selectedSource.contains("fitbit", ignoreCase = true)) "Fitbit" else state.selectedSource
+            } else {
+                if (activity?.sources?.isNotEmpty() == true) "Aggregated (${activity.sources.size})" else "Health Connect"
+            }
             GlassPill(
-                text = if (activity?.sources?.isNotEmpty() == true) "Aggregated (${activity.sources.size})" else "Health Connect",
-                dotColor = EnergyAmber
+                text = pillText,
+                dotColor = if (state.selectedSource != null) VayuCyan else EnergyAmber
             )
         }
 
@@ -60,12 +65,17 @@ fun ActivityScreen(
 
         // Steps Tile
         val stepsStr = activity?.steps?.let { "%,d".format(it) }
-        val updatedTimeStr = activity?.lastUpdated?.let { "Aggregated as of ${viewModel.formatTime(it)}" } ?: "Health Connect aggregated total"
-        val sourcesLabel = if (activity != null && activity.sources.isNotEmpty()) {
+        val isFiltered = state.selectedSource != null
+        val updatedTimeStr = if (isFiltered) {
+            "Fitbit Health Connect total for today"
+        } else {
+            activity?.lastUpdated?.let { "Aggregated as of ${viewModel.formatTime(it)}" } ?: "Health Connect aggregated total"
+        }
+        val sourcesLabel = state.selectedSource ?: (if (activity != null && activity.sources.isNotEmpty()) {
             if (activity.sources.size == 1) activity.sources.first() else "Health Connect (mixed: ${activity.sources.joinToString(", ")})"
         } else {
             "Health Connect"
-        }
+        })
 
         MetricTile(
             title = "Total Steps",
