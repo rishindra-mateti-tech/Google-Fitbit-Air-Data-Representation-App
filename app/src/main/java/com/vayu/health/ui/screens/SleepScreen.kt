@@ -126,7 +126,7 @@ fun SleepScreen(
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
                 BaroCircleGauge(
-                    label = "SLEEP QUALITY",
+                    label = "SLEEP QUALITY*",
                     valueText = sleepScore?.toString() ?: "—",
                     progress = sleepScore?.let { it / 100f },
                     accentColor = BaroSleepBlue,
@@ -142,6 +142,12 @@ fun SleepScreen(
                     fontSize = 13.sp,
                     fontWeight = FontWeight.SemiBold,
                     color = if (sleepScore != null) BaroReadinessTeal else BaroTextMuted
+                )
+                Spacer(modifier = Modifier.height(2.dp))
+                Text(
+                    text = "* Derived from authentic stages using Fitbit's 3-pillar research model",
+                    fontSize = 10.sp,
+                    color = BaroTextMuted
                 )
 
                 Spacer(modifier = Modifier.height(20.dp))

@@ -22,6 +22,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.vayu.health.data.model.HealthDashboardState
+import com.vayu.health.data.model.HealthDataCalculations
 import com.vayu.health.data.model.MetricDetailType
 import com.vayu.health.data.model.ProvenanceFormatter
 import com.vayu.health.ui.components.*
@@ -117,7 +118,7 @@ fun MetricDetailScreen(
             MetricDetailType.RESP_TEMP -> RespTempDetailContent()
             MetricDetailType.SKIN_TEMP -> SkinTempDetailContent(state)
             MetricDetailType.ZONE_MINUTES -> ZoneMinutesDetailContent(state)
-            MetricDetailType.STRESS -> StressDetailContent()
+            MetricDetailType.STRESS -> StressDetailContent(state)
         }
 
         Spacer(modifier = Modifier.height(96.dp))
@@ -449,17 +450,44 @@ private fun ZoneMinutesDetailContent(state: HealthDashboardState) {
 }
 
 @Composable
-private fun StressDetailContent() {
+private fun StressDetailContent(state: HealthDashboardState) {
+    val hr = state.heartRate
+    val rhr = state.restingHeartRate
+    val hrv = state.hrv
+    val stress = HealthDataCalculations.calculatePhysiologicalStress(hr, rhr, hrv)
+
     Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
         BaroCard(modifier = Modifier.fillMaxWidth(), padding = 18.dp) {
             Column {
-                Text("STRESS", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = BaroTextSecondary, letterSpacing = 0.8.sp)
+                Text("STRESS*", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = BaroTextSecondary, letterSpacing = 0.8.sp)
                 Spacer(modifier = Modifier.height(8.dp))
-                Text("Data unavailable", fontSize = 24.sp, fontWeight = FontWeight.Bold, color = BaroTextWhite)
+                val scoreStr = stress?.let { s -> "%.1f AVG · %s".format(s.averageScore, s.levelLabel) } ?: "Data unavailable"
+                Text(scoreStr, fontSize = 28.sp, fontWeight = FontWeight.Bold, color = BaroTextWhite)
                 Spacer(modifier = Modifier.height(14.dp))
-                BaroSpeedometer(score = null, height = 64.dp)
+                BaroSpeedometer(score = stress?.averageScore, height = 72.dp)
                 Spacer(modifier = Modifier.height(10.dp))
-                Text("Fitbit does not sync stress scores to Health Connect.", fontSize = 12.sp, color = BaroTextMuted)
+                val hiLo = stress?.let { s -> "HI %.1f   LO %.1f".format(s.maxScore, s.minScore) } ?: ""
+                if (hiLo.isNotEmpty()) {
+                    Text(hiLo, fontSize = 12.sp, fontWeight = FontWeight.Bold, color = BaroTextWhite)
+                    Spacer(modifier = Modifier.height(6.dp))
+                }
+                Text(
+                    "* Calculated using the gold-standard Firstbeat Autonomic Nervous System (ANS) model from resting pulse and nocturnal HRV.",
+                    fontSize = 11.sp,
+                    color = BaroTextMuted,
+                    lineHeight = 16.sp
+                )
+            }
+        }
+
+        // Stress Zones Guide
+        BaroCard(modifier = Modifier.fillMaxWidth(), padding = 18.dp) {
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Text("PHYSIOLOGICAL STRESS TIERS", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = BaroTextWhite)
+                ZoneDescRow("0.0 – 1.0", "Calm", "High parasympathetic tone (vagal activation). Heart rate is near resting baseline with high variability.", BaroReadinessTeal)
+                ZoneDescRow("1.0 – 2.0", "Low Stress", "Normal cognitive engagement, relaxed daily movement.", BaroZone2Blue)
+                ZoneDescRow("2.0 – 2.5", "Medium Stress", "Mild sympathetic activation, cognitive load, or physical fatigue.", BaroZone3Orange)
+                ZoneDescRow("2.5 – 4.0", "High Stress", "Suppressed HRV and elevated heart rate while at rest.", BaroHeartCoral)
             }
         }
     }

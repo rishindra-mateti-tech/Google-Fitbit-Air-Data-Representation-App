@@ -661,4 +661,32 @@ class HealthDataMappingTest {
         val avg = samples.average()
         assertEquals(31.0, avg, 0.001)
     }
+
+    @Test
+    fun testPhysiologicalStress_firstbeatModelCalculation() {
+        val t0 = Instant.parse("2026-10-16T10:00:00Z")
+        val fitbitSource = "com.fitbit.FitbitMobile"
+
+        val rhr = RestingHeartRateMetric(beatsPerMinute = 76L, timestamp = t0, sourcePackage = fitbitSource)
+        val hrv = HrvMetric(rmssdMillis = 31.0, timestamp = t0, sourcePackage = fitbitSource)
+        val hrSamples = listOf(
+            HeartRateSamplePoint(t0, 75L, fitbitSource),
+            HeartRateSamplePoint(t0.plusSeconds(60), 78L, fitbitSource),
+            HeartRateSamplePoint(t0.plusSeconds(120), 76L, fitbitSource)
+        )
+        val hr = HeartRateMetric(
+            latestBpm = 76L,
+            minBpm = 75L,
+            maxBpm = 78L,
+            averageBpm = 76L,
+            samples = hrSamples,
+            timestamp = t0,
+            sourcePackage = fitbitSource
+        )
+
+        val stress = HealthDataCalculations.calculatePhysiologicalStress(hr, rhr, hrv)
+        assertNotNull(stress)
+        assertEquals("Calm", stress?.levelLabel)
+        assertTrue(stress!!.averageScore in 0.0f..1.0f)
+    }
 }

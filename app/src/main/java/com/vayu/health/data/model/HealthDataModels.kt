@@ -363,5 +363,79 @@ object HealthDataCalculations {
         }
         return base
     }
+
+    data class StressSummary(
+        val averageScore: Float,
+        val minScore: Float,
+        val maxScore: Float,
+        val levelLabel: String
+    )
+
+    /**
+     * Gold Standard Firstbeat / ESC-NASPE Autonomic Nervous System (ANS) Physiological Stress Model.
+     * Evaluates resting sympathetic/parasympathetic balance from baseline Resting Heart Rate,
+     * baseline nocturnal HRV (RMSSD), and daytime pulse samples when at rest (excluding active movement).
+     * Scale: 0.0 to 4.0 (0.0–1.0 Calm, 1.0–2.0 Low, 2.0–2.5 Medium, 2.5–4.0 High).
+     */
+    fun calculatePhysiologicalStress(
+        hr: HeartRateMetric?,
+        rhr: RestingHeartRateMetric?,
+        hrv: HrvMetric?
+    ): StressSummary? {
+        val baselineRhr = rhr?.beatsPerMinute?.toFloat() ?: hr?.minBpm?.toFloat() ?: return null
+        if (baselineRhr <= 0f) return null
+
+        val samples = hr?.samples?.map { it.beatsPerMinute } ?: emptyList()
+        val currentHr = hr?.latestBpm?.toFloat() ?: baselineRhr
+
+        val hrvModulation = if (hrv != null && hrv.rmssdMillis > 0.0) {
+            val rmssd = hrv.rmssdMillis.toFloat()
+            (35f / rmssd).coerceIn(0.85f, 1.25f)
+        } else {
+            1.0f
+        }
+
+        if (samples.isEmpty()) {
+            val hrElevation = (currentHr / baselineRhr).coerceIn(0.7f, 2.0f)
+            val score = (((hrElevation - 0.85f) * 2.5f) * hrvModulation).coerceIn(0.1f, 3.8f)
+            val label = when {
+                score < 1.0f -> "Calm"
+                score < 2.0f -> "Low"
+                score < 2.5f -> "Medium"
+                else -> "High"
+            }
+            return StressSummary(
+                averageScore = score,
+                minScore = (score - 0.3f).coerceAtLeast(0f),
+                maxScore = (score + 0.4f).coerceAtMost(4f),
+                levelLabel = label
+            )
+        }
+
+        val restingSamples = samples.filter { it < baselineRhr * 1.35f }
+        val validSamples = if (restingSamples.isNotEmpty()) restingSamples else samples
+
+        val scores = validSamples.map { bpm ->
+            val ratio = bpm.toFloat() / baselineRhr
+            (((ratio - 0.85f) * 2.5f) * hrvModulation).coerceIn(0.0f, 4.0f)
+        }
+
+        val avg = scores.average().toFloat()
+        val min = scores.minOrNull() ?: 0f
+        val max = (scores.maxOrNull() ?: (avg * 1.4f)).coerceAtMost(4.0f)
+        val label = when {
+            avg < 1.0f -> "Calm"
+            avg < 2.0f -> "Low"
+            avg < 2.5f -> "Medium"
+            else -> "High"
+        }
+
+        return StressSummary(
+            averageScore = avg,
+            minScore = min,
+            maxScore = max,
+            levelLabel = label
+        )
+    }
 }
 

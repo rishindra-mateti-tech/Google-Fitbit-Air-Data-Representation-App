@@ -125,7 +125,7 @@ Vayu is designed to isolate your Fitbit data from other apps that may write to H
 
 ## 🧪 Testing & Quality Assurance
 
-### Unit Tests (`app/src/test`): 30 Passed (100%)
+### Unit Tests (`app/src/test`): 31 Passed (100%)
 * `ProvenanceFormatterTest`: Tests friendly display name formatting, single-word compact pill generation, system hash package detection, and source-aware empty states.
 * `HealthDataMappingTest`:
   * `testFitbitOnlyFiltering_strictlyFiltersRecords`: Verifies strict origin matching and zero leakage.
@@ -139,6 +139,7 @@ Vayu is designed to isolate your Fitbit data from other apps that may write to H
   * `testSleepScore_parsingAndCalibratedCalculation`: Verifies Option A score extraction from provider metadata and 3-pillar calibrated scoring matching Fitbit's 83.
   * `testHeartRateCalculations_accurateAggregations`: Verifies pulse sample aggregations.
   * `testHrv_sessionAveragingCalculation`: Verifies nocturnal RMSSD session averaging reflecting consolidated baseline.
+  * `testPhysiologicalStress_firstbeatModelCalculation`: Verifies Firstbeat ANS gold-standard physiological stress score derived from resting pulse elevation and nocturnal RMSSD.
   * `testSkinTemperature_accurateAverageAndDeltas`: Verifies skin temperature delta calculations.
   * `testHealthDateRangeCalculator_timezoneAndWindowBoundaries`: Verifies current day 24h lookback windowing.
   * `testHealthDateRangeCalculator_pastDateWindowBoundaries`: Verifies historical day 12h evening lookback windowing.
@@ -147,7 +148,7 @@ Vayu is designed to isolate your Fitbit data from other apps that may write to H
   * `testRepository_handlesEmptyPermissions` & `testRepository_handlesPartialMetricFailuresGracefully`: Verifies partial permissions.
 
 > [!NOTE]
-> All 30 unit tests executed and passed cleanly (`BUILD SUCCESSFUL`). Android Lint completed with 0 errors (`lintDebug`).
+> All 31 unit tests executed and passed cleanly (`BUILD SUCCESSFUL`). Android Lint completed with 0 errors (`lintDebug`).
 
 ---
 
@@ -155,7 +156,7 @@ Vayu is designed to isolate your Fitbit data from other apps that may write to H
 
 | File | Type | SHA-256 Checksum |
 | :--- | :--- | :--- |
-| **[`Vayu-Personal-Test.apk`](https://github.com/rishindra-mateti-tech/Google-Fitbit-Air-Data-Representation-App/releases/download/v1.0.4/Vayu-Personal-Test.apk)** | Sideloadable debug APK with authentic custom app icon for personal testing on Samsung Galaxy S25 Ultra | `7F6D41824AD9C3037FC5A5CF36E2EB04A151AB55C8C168A2343317850FB7EE3E` |
+| **[`Vayu-Personal-Test.apk`](https://github.com/rishindra-mateti-tech/Google-Fitbit-Air-Data-Representation-App/releases/download/v1.0.4/Vayu-Personal-Test.apk)** | Sideloadable debug APK with authentic custom app icon for personal testing on Samsung Galaxy S25 Ultra | `ECC24521269B3C3CD232443EB374A1FC1155BB02335AABC2447B6BAB3F6161B8` |
 | **`Vayu-debug.apk`** | Debug Build | `D8C3FD78ADE8B58FA3835BDF34DDEF9E6C902B0C403282E977732A003E9C51CA` |
 | **`Vayu-release.apk`** | Production Release Build | `9FDAC1331A6E1D615892954BB98A06DA70FA87B745094848BBF22594B00815DC` |
 

@@ -161,11 +161,11 @@ fun BaroOverviewScreen(
 
         Spacer(modifier = Modifier.height(24.dp))
 
-        // 2. Top 3 Circular Gauges: SLEEP, READINESS, STRAIN
+        // 2. Top 3 Circular Gauges: SLEEP, READINESS, STRAIN (Perfect Symmetrical Baro Alignment)
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.SpaceEvenly,
-            verticalAlignment = Alignment.Top
+            verticalAlignment = Alignment.CenterVertically
         ) {
             // SLEEP GAUGE
             Column(
@@ -173,7 +173,7 @@ fun BaroOverviewScreen(
                 modifier = Modifier.clickable { onOpenTab(VayuTab.SLEEP) }
             ) {
                 BaroCircleGauge(
-                    label = "SLEEP",
+                    label = "SLEEP*",
                     valueText = sleepScoreStr,
                     progress = sleepProgress,
                     accentColor = BaroSleepBlue,
@@ -182,7 +182,7 @@ fun BaroOverviewScreen(
                 )
             }
 
-            // READINESS GAUGE (Recovery in Whoop)
+            // READINESS GAUGE
             Column(
                 horizontalAlignment = Alignment.CenterHorizontally,
                 modifier = Modifier.clickable { viewModel.openMetricDetail(MetricDetailType.READINESS) }
@@ -194,20 +194,6 @@ fun BaroOverviewScreen(
                     accentColor = BaroReadinessTeal,
                     size = 106.dp,
                     strokeWidth = 10.dp
-                )
-                Spacer(modifier = Modifier.height(3.dp))
-                Text(
-                    text = "Recovery (Whoop)",
-                    fontSize = 9.sp,
-                    color = BaroTextMuted,
-                    fontWeight = FontWeight.Medium
-                )
-                Spacer(modifier = Modifier.height(2.dp))
-                Text(
-                    text = "Wear 4 more nights",
-                    fontSize = 8.5.sp,
-                    color = Color(0xFF707078),
-                    fontWeight = FontWeight.Normal
                 )
             }
 
@@ -342,7 +328,8 @@ fun BaroOverviewScreen(
                     }
                 }
 
-                // Stress Card
+                // Stress Card (Firstbeat ANS Gold-Standard Model)
+                val stress = HealthDataCalculations.calculatePhysiologicalStress(hr, rhr, hrv)
                 BaroCard(
                     modifier = Modifier.weight(1f).height(156.dp),
                     padding = 16.dp,
@@ -354,15 +341,17 @@ fun BaroOverviewScreen(
                             horizontalArrangement = Arrangement.SpaceBetween,
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Text("STRESS", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = BaroTextSecondary, letterSpacing = 0.6.sp)
+                            Text("STRESS*", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = BaroTextSecondary, letterSpacing = 0.6.sp)
                             Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, null, tint = BaroTextMuted, modifier = Modifier.size(16.dp))
                         }
 
-                        Text("Not tracked", fontSize = 15.sp, fontWeight = FontWeight.Bold, color = BaroTextSecondary)
+                        val stressValueText = stress?.let { "%.1f AVG · %s".format(it.averageScore, it.levelLabel) } ?: "—"
+                        Text(stressValueText, fontSize = 14.sp, fontWeight = FontWeight.Bold, color = BaroTextWhite)
 
-                        BaroSpeedometer(score = null, height = 44.dp)
+                        BaroSpeedometer(score = stress?.averageScore, height = 44.dp)
 
-                        Text("Fitbit does not export stress", fontSize = 9.5.sp, fontWeight = FontWeight.Medium, color = BaroTextMuted, maxLines = 1)
+                        val stressSubtitle = stress?.let { "HI %.1f   LO %.1f".format(it.maxScore, it.minScore) } ?: "* Firstbeat ANS Model"
+                        Text(stressSubtitle, fontSize = 9.5.sp, fontWeight = FontWeight.Medium, color = BaroTextMuted, maxLines = 1)
                     }
                 }
             }
