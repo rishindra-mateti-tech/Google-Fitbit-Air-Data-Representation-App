@@ -272,7 +272,7 @@ fun BaroOverviewScreen(
                         BaroSparklineWave(samples = hrSamples, height = 44.dp, showLiveIndicator = latestBpm != null)
 
                         Text(
-                            text = restBpm?.let { "REST $it" } ?: "No pulse data",
+                            text = restBpm?.let { "REST $it bpm" } ?: (latestBpm?.let { "CURRENT $it bpm" } ?: "No pulse data"),
                             fontSize = 10.sp,
                             fontWeight = FontWeight.Medium,
                             color = BaroTextMuted
@@ -467,7 +467,11 @@ fun BaroOverviewScreen(
                     modifier = Modifier.weight(1f)
                 )
 
-                val skinDelta = resp?.skinTemperature?.averageDeltaCelsius?.let { "%+.1f".format(it) }
+                val rawDelta = resp?.skinTemperature?.averageDeltaCelsius
+                val skinDelta = rawDelta?.let {
+                    val clean = if (kotlin.math.abs(it) < 0.05) 0.0 else it
+                    "%+.1f".format(clean)
+                }
                 PinnedMetricCard(
                     title = "SKIN TEMP",
                     value = skinDelta ?: "—",

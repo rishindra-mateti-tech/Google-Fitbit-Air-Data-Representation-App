@@ -39,7 +39,8 @@ data class SleepMetric(
     val startTime: Instant,
     val endTime: Instant,
     val stages: List<SleepStageSegment>,
-    val sourcePackage: String
+    val sourcePackage: String,
+    val recordedScore: Int? = null
 )
 
 data class DailySleepSummary(
@@ -211,22 +212,50 @@ object HealthDataCalculations {
         )
     }
 
+    fun parseSleepScoreFromText(title: String?, notes: String?): Int? {
+        val combined = listOfNotNull(title, notes).joinToString(" ")
+        if (combined.isBlank()) return null
+        val regex = Regex("""(?:score[:\s=]*|score\s+to\s+)(\d{1,3})|(\d{1,3})\s*(?:•\s*(?:Good|Fair|Poor|Excellent)|/100)""", RegexOption.IGNORE_CASE)
+        val match = regex.find(combined)
+        if (match != null) {
+            val scoreStr = match.groups[1]?.value ?: match.groups[2]?.value
+            val score = scoreStr?.toIntOrNull()
+            if (score != null && score in 10..100) return score
+        }
+        val regex2 = Regex("""\b(?:sleep|quality)[^\d]{1,15}(\d{2})\b""", RegexOption.IGNORE_CASE)
+        val match2 = regex2.find(combined)
+        if (match2 != null) {
+            val score = match2.groupValues[1].toIntOrNull()
+            if (score != null && score in 30..100) return score
+        }
+        return null
+    }
+
     /**
-     * Pure transparent derivation of sleep score directly from authentic Health Connect sleep records.
-     * Weights: 50% Duration (target 8h) + 25% Restorative (Deep + REM ratio, target 40%) + 25% Sleep Efficiency.
-     * Returns null if sleep session or duration is not present.
+     * Sleep score calculation aligned with Fitbit's 3-pillar scoring:
+     * 1. Duration (up to 50 pts): Target 7-8 hours.
+     * 2. Restorative Sleep (Deep + REM ratio, up to 25 pts, target 25-40%).
+     * 3. Efficiency (Time asleep vs in bed, up to 25 pts).
+     * If provider exported score in text (title/notes), that score takes precedence.
      */
     fun calculateSleepScore(sleep: SleepMetric?): Int? {
         if (sleep == null || sleep.actualSleepDurationMinutes == null || sleep.sessionElapsedMinutes <= 0) return null
+        if (sleep.recordedScore != null) return sleep.recordedScore
+
         val actualMins = sleep.actualSleepDurationMinutes
         val elapsedMins = sleep.sessionElapsedMinutes
-        val durationScore = ((actualMins.toDouble() / 480.0) * 50.0).coerceIn(0.0, 50.0)
+
+        val durationRatio = (actualMins.toDouble() / 480.0).coerceIn(0.0, 1.0)
+        val durationScore = Math.pow(durationRatio, 1.7) * 50.0
+
         val restorativeMins = sleep.deepMinutes + sleep.remMinutes
         val restorativeRatio = restorativeMins.toDouble() / actualMins.coerceAtLeast(1)
         val restorativeScore = ((restorativeRatio / 0.40) * 25.0).coerceIn(0.0, 25.0)
+
         val efficiency = actualMins.toDouble() / elapsedMins
         val efficiencyScore = (efficiency * 25.0).coerceIn(0.0, 25.0)
-        return (durationScore + restorativeScore + efficiencyScore).toInt().coerceIn(10, 100)
+
+        return ((durationScore + restorativeScore + efficiencyScore) + 0.5).toInt().coerceIn(10, 100)
     }
 
     data class HeartRateSummary(

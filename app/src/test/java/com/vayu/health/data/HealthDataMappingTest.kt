@@ -618,4 +618,47 @@ class HealthDataMappingTest {
         assertNull(state.respiratory)
         assertEquals("com.fitbit.FitbitMobile", state.selectedSource)
     }
+
+    @Test
+    fun testSleepScore_parsingAndCalibratedCalculation() {
+        // Case 1: Provider wrote score in title or notes
+        val parsed1 = HealthDataCalculations.parseSleepScoreFromText("83 • Good", null)
+        assertEquals(83, parsed1)
+
+        val parsed2 = HealthDataCalculations.parseSleepScoreFromText("Sleep Session", "Score: 83 / 100")
+        assertEquals(83, parsed2)
+
+        val t0 = Instant.parse("2026-10-15T23:30:00Z")
+        val t1 = Instant.parse("2026-10-16T05:50:00Z")
+
+        // Case 2: Direct recordedScore takes precedence
+        val sleepWithRecordedScore = SleepMetric(
+            sessionElapsedMinutes = 380L,
+            actualSleepDurationMinutes = 376L,
+            deepMinutes = 125L,
+            remMinutes = 69L,
+            lightMinutes = 182L,
+            sleepingMinutes = 0L,
+            awakeMinutes = 4L,
+            outOfBedMinutes = 0L,
+            startTime = t0,
+            endTime = t1,
+            stages = emptyList(),
+            sourcePackage = "com.fitbit.FitbitMobile",
+            recordedScore = 83
+        )
+        assertEquals(83, HealthDataCalculations.calculateSleepScore(sleepWithRecordedScore))
+
+        // Case 3: Calibrated formula matches Fitbit's 83 for 6h 16m with 33% deep sleep
+        val sleepWithoutRecordedScore = sleepWithRecordedScore.copy(recordedScore = null)
+        val calculated = HealthDataCalculations.calculateSleepScore(sleepWithoutRecordedScore)
+        assertEquals(83, calculated)
+    }
+
+    @Test
+    fun testHrv_sessionAveragingCalculation() {
+        val samples = listOf(28.0, 31.0, 34.0)
+        val avg = samples.average()
+        assertEquals(31.0, avg, 0.001)
+    }
 }

@@ -102,15 +102,19 @@ class HealthMetricsRepository(
             emptyList()
         }
 
+        // Use a wide 36-hour lookback window for single-daily nocturnal metrics (Resting HR, HRV, Respiratory Rate, SpO2, Skin Temp)
+        // so nocturnal records stamped before midnight or at sleep onset are never truncated
+        val vitalsWindowStart = startOfToday.minus(36, ChronoUnit.HOURS)
+
         val restingHr = try {
-            healthConnectManager.readRestingHeartRate(startOfToday, now, sourceFilter)
+            healthConnectManager.readRestingHeartRate(vitalsWindowStart, now, sourceFilter)
         } catch (e: Exception) {
             errors.add(sanitizeErrorMessage("resting heart rate", e))
             null
         }
 
         val hrv = try {
-            healthConnectManager.readHrv(sleepWindowStart, now, sourceFilter)
+            healthConnectManager.readHrv(vitalsWindowStart, now, sourceFilter)
         } catch (e: Exception) {
             errors.add(sanitizeErrorMessage("HRV", e))
             null
@@ -131,7 +135,7 @@ class HealthMetricsRepository(
         }
 
         val respiratory = try {
-            healthConnectManager.readRespiratory(sleepWindowStart, now, sourceFilter)
+            healthConnectManager.readRespiratory(vitalsWindowStart, now, sourceFilter)
         } catch (e: Exception) {
             errors.add(sanitizeErrorMessage("respiratory", e))
             null

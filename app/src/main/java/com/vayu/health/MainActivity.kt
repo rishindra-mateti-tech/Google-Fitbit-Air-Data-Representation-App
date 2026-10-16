@@ -173,11 +173,13 @@ class MainActivity : ComponentActivity() {
                                 }
                             }
 
-                            // Permission banner if NO permissions granted
+                            // Permission banner if any permissions are missing
+                            val missingPermissions = healthConnectManager.permissions - uiState.grantedPermissions
                             if (uiState.sdkStatus == HealthConnectStatus.AVAILABLE &&
-                                uiState.grantedPermissions.isEmpty() &&
+                                missingPermissions.isNotEmpty() &&
                                 !uiState.isLoading
                             ) {
+                                val isFirstGrant = uiState.grantedPermissions.isEmpty()
                                 GlassCard(
                                     modifier = Modifier
                                         .fillMaxWidth()
@@ -196,7 +198,7 @@ class MainActivity : ComponentActivity() {
                                             )
                                             Spacer(modifier = Modifier.width(8.dp))
                                             Text(
-                                                text = "Health Connect Permissions Needed",
+                                                text = if (isFirstGrant) "Health Connect Permissions Needed" else "Additional Permissions Available",
                                                 fontWeight = FontWeight.Bold,
                                                 color = TextPrimary,
                                                 fontSize = 14.sp
@@ -204,7 +206,10 @@ class MainActivity : ComponentActivity() {
                                         }
                                         Spacer(modifier = Modifier.height(6.dp))
                                         Text(
-                                            text = "Grant read permissions so Vayu can display your authentic wearable records.",
+                                            text = if (isFirstGrant)
+                                                "Grant read permissions so Vayu can display your authentic wearable records."
+                                            else
+                                                "Grant permissions for ${missingPermissions.size} additional metrics (Resting HR, SpO2, Respiratory Rate) for complete tracking.",
                                             fontSize = 12.sp,
                                             color = TextSecondary
                                         )
@@ -220,7 +225,7 @@ class MainActivity : ComponentActivity() {
                                             shape = RoundedCornerShape(12.dp)
                                         ) {
                                             Text(
-                                                text = "Grant Read Permissions",
+                                                text = if (isFirstGrant) "Grant Read Permissions" else "Grant Remaining Permissions",
                                                 fontWeight = FontWeight.Bold,
                                                 fontSize = 12.sp
                                             )
