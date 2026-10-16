@@ -28,12 +28,13 @@ import kotlin.math.sin
  */
 @Composable
 fun BaroSpeedometer(
-    score: Float?, // Typical stress score e.g. 0.0 to 3.0 or 0f to 1f normalized
+    score: Float?, // Typical stress score e.g. 0.0 to 3.0 or 0f to 1f normalized; null = unrecorded
     modifier: Modifier = Modifier,
     maxScore: Float = 3.0f,
     height: Dp = 52.dp
 ) {
-    val normalized = ((score ?: 0.6f) / maxScore).coerceIn(0f, 1f)
+    val hasScore = score != null
+    val normalized = if (hasScore) (score!! / maxScore).coerceIn(0f, 1f) else 0f
     val animatedNormalized = remember { Animatable(0f) }
 
     LaunchedEffect(normalized) {
@@ -73,7 +74,7 @@ fun BaroSpeedometer(
                 else -> BaroHeartCoral
             }
 
-            val isActive = fraction <= animatedNormalized.value
+            val isActive = hasScore && (fraction <= animatedNormalized.value)
             val tickColor = if (isActive) baseColor else Color(0xFF26262C)
 
             val start = Offset(
@@ -94,30 +95,39 @@ fun BaroSpeedometer(
             )
         }
 
-        // Draw indicator needle or center hub
-        val needleAngleDeg = startAngleDeg + animatedNormalized.value * totalSweepDeg
-        val needleAngleRad = Math.toRadians(needleAngleDeg.toDouble())
-        val needleLength = radius - 3.dp.toPx()
+        // Draw indicator needle or center hub only if score is recorded
+        if (hasScore) {
+            val needleAngleDeg = startAngleDeg + animatedNormalized.value * totalSweepDeg
+            val needleAngleRad = Math.toRadians(needleAngleDeg.toDouble())
+            val needleLength = radius - 3.dp.toPx()
 
-        val needleTip = Offset(
-            x = (centerX + needleLength * cos(needleAngleRad)).toFloat(),
-            y = (centerY + needleLength * sin(needleAngleRad)).toFloat()
-        )
+            val needleTip = Offset(
+                x = (centerX + needleLength * cos(needleAngleRad)).toFloat(),
+                y = (centerY + needleLength * sin(needleAngleRad)).toFloat()
+            )
 
-        // Center pivot dot
-        drawCircle(
-            color = BaroReadinessTeal,
-            radius = 3.dp.toPx(),
-            center = Offset(centerX, centerY)
-        )
+            // Center pivot dot
+            drawCircle(
+                color = BaroReadinessTeal,
+                radius = 3.dp.toPx(),
+                center = Offset(centerX, centerY)
+            )
 
-        // Needle line
-        drawLine(
-            color = Color.White,
-            start = Offset(centerX, centerY),
-            end = needleTip,
-            strokeWidth = 2.dp.toPx(),
-            cap = StrokeCap.Round
-        )
+            // Needle line
+            drawLine(
+                color = Color.White,
+                start = Offset(centerX, centerY),
+                end = needleTip,
+                strokeWidth = 2.dp.toPx(),
+                cap = StrokeCap.Round
+            )
+        } else {
+            // Subtle center neutral dot
+            drawCircle(
+                color = Color(0xFF323238),
+                radius = 2.5.dp.toPx(),
+                center = Offset(centerX, centerY)
+            )
+        }
     }
 }

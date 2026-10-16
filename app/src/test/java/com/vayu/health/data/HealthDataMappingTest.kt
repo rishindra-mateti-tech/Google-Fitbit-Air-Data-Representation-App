@@ -406,6 +406,29 @@ class HealthDataMappingTest {
     }
 
     @Test
+    fun testHealthDateRangeCalculator_pastDateWindowBoundaries() {
+        val fixedNow = Instant.parse("2026-10-15T15:30:00Z")
+        val fixedZone = ZoneId.of("UTC")
+
+        val calculator = HealthDateRangeCalculator(
+            clock = { fixedNow },
+            zoneId = { fixedZone }
+        )
+
+        val pastDate = java.time.LocalDate.of(2026, 10, 10)
+        val windows = calculator.calculateWindows(pastDate)
+
+        // For past date, queryEnd is end of that day (2026-10-11T00:00:00Z)
+        assertEquals(Instant.parse("2026-10-11T00:00:00Z"), windows.now)
+        // startOfTargetDay is 2026-10-10T00:00:00Z
+        assertEquals(Instant.parse("2026-10-10T00:00:00Z"), windows.startOfToday)
+        // sleepWindowStart is startOfTargetDay minus 12h: 2026-10-09T12:00:00Z
+        assertEquals(Instant.parse("2026-10-09T12:00:00Z"), windows.sleepWindowStart)
+        // sleepHistoryStart is startOfTargetDay minus 7 days: 2026-10-03T00:00:00Z
+        assertEquals(Instant.parse("2026-10-03T00:00:00Z"), windows.sleepHistoryStart)
+    }
+
+    @Test
     fun testSanitizeErrorMessage_stripsHexMemoryAddressesAndHandlesBlank() {
         val fakeManager = object : HealthConnectManager(null) {}
         val repo = HealthMetricsRepository(fakeManager)

@@ -20,15 +20,19 @@ class HealthDateRangeCalculator(
         val sleepHistoryStart: Instant
     )
 
-    fun calculateWindows(): DateWindows {
+    fun calculateWindows(targetDate: LocalDate? = null): DateWindows {
         val now = clock()
         val zone = zoneId()
-        val startOfToday = now.atZone(zone).toLocalDate().atStartOfDay(zone).toInstant()
-        val sleepWindowStart = now.minus(24, ChronoUnit.HOURS)
-        val sleepHistoryStart = now.minus(7, ChronoUnit.DAYS)
+        val isCurrentDay = targetDate == null || targetDate == now.atZone(zone).toLocalDate()
+        val date = targetDate ?: now.atZone(zone).toLocalDate()
+        val startOfTargetDay = date.atStartOfDay(zone).toInstant()
+        val endOfTargetDay = date.plusDays(1).atStartOfDay(zone).toInstant()
+        val queryEnd = if (isCurrentDay) now else endOfTargetDay
+        val sleepWindowStart = if (isCurrentDay) now.minus(24, ChronoUnit.HOURS) else startOfTargetDay.minus(12, ChronoUnit.HOURS)
+        val sleepHistoryStart = if (isCurrentDay) now.minus(7, ChronoUnit.DAYS) else startOfTargetDay.minus(7, ChronoUnit.DAYS)
         return DateWindows(
-            now = now,
-            startOfToday = startOfToday,
+            now = queryEnd,
+            startOfToday = startOfTargetDay,
             sleepWindowStart = sleepWindowStart,
             sleepHistoryStart = sleepHistoryStart
         )
@@ -40,11 +44,11 @@ class HealthMetricsRepository(
     private val dateRangeCalculator: HealthDateRangeCalculator = HealthDateRangeCalculator()
 ) {
     /**
-     * Reads health metrics filtered by the specified DataOrigin source package.
+     * Reads health metrics filtered by the specified DataOrigin source package and target date.
      * When sourceFilter is null, reads in mixed-source "All Health Connect Sources" mode.
      * When sourceFilter is non-null (e.g. "com.fitbit.FitbitMobile"), restricts all reads strictly to that origin.
      */
-    suspend fun getTodayDashboardState(sourceFilter: String? = null): HealthDashboardState = withContext(Dispatchers.IO) {
+    suspend fun getTodayDashboardState(sourceFilter: String? = null, targetDate: LocalDate? = null): HealthDashboardState = withContext(Dispatchers.IO) {
         val sdkStatus = healthConnectManager.getSdkStatus()
         if (sdkStatus != HealthConnectStatus.AVAILABLE) {
             return@withContext HealthDashboardState(
@@ -72,7 +76,7 @@ class HealthMetricsRepository(
             )
         }
 
-        val windows = dateRangeCalculator.calculateWindows()
+        val windows = dateRangeCalculator.calculateWindows(targetDate)
         val now = windows.now
         val startOfToday = windows.startOfToday
         val sleepWindowStart = windows.sleepWindowStart

@@ -9,10 +9,8 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ChevronLeft
 import androidx.compose.material.icons.filled.ChevronRight
-import androidx.compose.material.icons.filled.Favorite
-import androidx.compose.material.icons.filled.Info
-import androidx.compose.material.icons.filled.Nightlight
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
@@ -23,22 +21,23 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.vayu.health.data.model.HealthDashboardState
+import com.vayu.health.data.model.HealthDataCalculations
 import com.vayu.health.data.model.ProvenanceFormatter
+import com.vayu.health.data.model.SleepMetric
 import com.vayu.health.ui.components.*
 import com.vayu.health.ui.theme.*
 import com.vayu.health.ui.viewmodel.HealthDashboardViewModel
-import java.time.Instant
 
 /**
  * Pixel-accurate Baro Sleep Detail Screen.
- * Implements:
- * 1. Hero 270-degree sleep quality gauge ("89")
- * 2. Side-by-side Asleep vs In Bed metrics
- * 3. "What shaped sleep quality" indicators
- * 4. Overnight Heart Rate graph with dip curve
+ * Uses authentic Health Connect data exclusively (no mock values).
+ * Displays:
+ * 1. Harmonized sleep score matching Overview
+ * 2. Asleep vs In Bed vs Efficiency
+ * 3. What shaped sleep quality
+ * 4. Overnight Heart Rate
  * 5. Proportional Stage Breakdown & 4-lane Hypnogram timeline
- * 6. "A closer look" 2x2 metrics grid
- * 7. 7-day sleep history
+ * 6. Closer Look 2x2 grid
  */
 @Composable
 fun SleepScreen(
@@ -49,19 +48,30 @@ fun SleepScreen(
     val scrollState = rememberScrollState()
     val sleep = state.sleep
     val rhr = state.restingHeartRate
+    val hr = state.heartRate
 
-    // Sleep durations (fallback to real session from screenshots if query window was outside today)
-    val actualSleepMinutes = sleep?.actualSleepDurationMinutes ?: (6 * 60 + 16L) // 6h 16m
-    val inBedMinutes = sleep?.sessionElapsedMinutes ?: (6 * 60 + 20L)            // 6h 20m
-    val efficiencyPct = ((actualSleepMinutes.toDouble() / inBedMinutes.coerceAtLeast(1)) * 100).toInt().coerceIn(10, 100)
+    val sleepScore = state.sleepScore ?: HealthDataCalculations.calculateSleepScore(sleep)
 
-    val deepMins = sleep?.deepMinutes ?: (2 * 60 + 5L)  // 2h 5m
-    val remMins = sleep?.remMinutes ?: (1 * 60 + 9L)    // 1h 9m
-    val lightMins = sleep?.lightMinutes ?: (3 * 60 + 2L) // 3h 2m
-    val awakeMins = sleep?.awakeMinutes ?: 4L            // 4m
+    val actualSleepMinutes = sleep?.actualSleepDurationMinutes
+    val inBedMinutes = sleep?.sessionElapsedMinutes
+    val efficiencyPct = if (actualSleepMinutes != null && inBedMinutes != null && inBedMinutes > 0) {
+        ((actualSleepMinutes.toDouble() / inBedMinutes) * 100).toInt().coerceIn(10, 100)
+    } else null
 
-    val sessionStart = sleep?.startTime ?: Instant.now().minusSeconds(26400) // ~12:57 AM
-    val sessionEnd = sleep?.endTime ?: Instant.now().minusSeconds(3600)      // ~7:17 AM
+    val deepMins = sleep?.deepMinutes ?: 0L
+    val remMins = sleep?.remMinutes ?: 0L
+    val lightMins = sleep?.lightMinutes ?: 0L
+    val awakeMins = sleep?.awakeMinutes ?: 0L
+
+    val sessionStart = sleep?.startTime
+    val sessionEnd = sleep?.endTime
+
+    // Filter authentic pulse samples that occurred during the sleep session
+    val overnightSamples = if (sessionStart != null && sessionEnd != null && hr != null) {
+        hr.samples.filter { it.time >= sessionStart && it.time <= sessionEnd }.map { it.beatsPerMinute }
+    } else {
+        emptyList()
+    }
 
     Column(
         modifier = modifier
@@ -70,7 +80,7 @@ fun SleepScreen(
             .verticalScroll(scrollState)
             .padding(horizontal = 16.dp, vertical = 12.dp)
     ) {
-        // Date Header
+        // Date Header with working navigation arrows
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.SpaceBetween,
@@ -78,11 +88,26 @@ fun SleepScreen(
         ) {
             Row(
                 verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(4.dp)
+                horizontalArrangement = Arrangement.spacedBy(2.dp)
             ) {
-                Icon(Icons.Default.ChevronLeft, null, tint = BaroTextMuted, modifier = Modifier.size(20.dp))
-                Text(viewModel.getBaroHeaderDate(), fontSize = 17.sp, fontWeight = FontWeight.Bold, color = BaroTextWhite)
-                Icon(Icons.Default.ChevronRight, null, tint = BaroTextMuted, modifier = Modifier.size(20.dp))
+                IconButton(
+                    onClick = { viewModel.selectPreviousDay() },
+                    modifier = Modifier.size(32.dp)
+                ) {
+                    Icon(Icons.Default.ChevronLeft, "Previous Day", tint = BaroTextMuted, modifier = Modifier.size(20.dp))
+                }
+                Text(
+                    text = viewModel.getBaroHeaderDate(),
+                    fontSize = 17.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = BaroTextWhite
+                )
+                IconButton(
+                    onClick = { viewModel.selectNextDay() },
+                    modifier = Modifier.size(32.dp)
+                ) {
+                    Icon(Icons.Default.ChevronRight, "Next Day", tint = BaroTextMuted, modifier = Modifier.size(20.dp))
+                }
             }
 
             val pillText = ProvenanceFormatter.formatCompact(sleep?.sourcePackage ?: state.selectedSource)
@@ -102,20 +127,21 @@ fun SleepScreen(
             ) {
                 BaroCircleGauge(
                     label = "SLEEP QUALITY",
-                    valueText = "89",
-                    progress = 0.89f,
+                    valueText = sleepScore?.toString() ?: "—",
+                    progress = sleepScore?.let { it / 100f },
                     accentColor = BaroSleepBlue,
-                    size = 120.dp,
+                    size = 116.dp,
                     strokeWidth = 10.dp
                 )
 
                 Spacer(modifier = Modifier.height(8.dp))
 
+                val statusText = if (sleep != null && sleepScore != null) "Restorative Sleep Score: $sleepScore" else "Data unavailable"
                 Text(
-                    text = "Optimal · Restorative Rest",
+                    text = statusText,
                     fontSize = 13.sp,
                     fontWeight = FontWeight.SemiBold,
-                    color = BaroReadinessTeal
+                    color = if (sleepScore != null) BaroReadinessTeal else BaroTextMuted
                 )
 
                 Spacer(modifier = Modifier.height(20.dp))
@@ -128,9 +154,8 @@ fun SleepScreen(
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
                         Text("ASLEEP", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = BaroTextMuted, letterSpacing = 0.7.sp)
                         Spacer(modifier = Modifier.height(4.dp))
-                        val h = actualSleepMinutes / 60
-                        val m = actualSleepMinutes % 60
-                        Text("${h}h ${m}m", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = BaroTextWhite)
+                        val text = if (actualSleepMinutes != null) "${actualSleepMinutes / 60}h ${actualSleepMinutes % 60}m" else "—"
+                        Text(text, fontSize = 20.sp, fontWeight = FontWeight.Bold, color = BaroTextWhite)
                     }
 
                     Box(
@@ -143,9 +168,8 @@ fun SleepScreen(
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
                         Text("IN BED", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = BaroTextMuted, letterSpacing = 0.7.sp)
                         Spacer(modifier = Modifier.height(4.dp))
-                        val bh = inBedMinutes / 60
-                        val bm = inBedMinutes % 60
-                        Text("${bh}h ${bm}m", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = BaroTextWhite)
+                        val text = if (inBedMinutes != null) "${inBedMinutes / 60}h ${inBedMinutes % 60}m" else "—"
+                        Text(text, fontSize = 20.sp, fontWeight = FontWeight.Bold, color = BaroTextWhite)
                     }
 
                     Box(
@@ -158,7 +182,8 @@ fun SleepScreen(
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
                         Text("EFFICIENCY", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = BaroTextMuted, letterSpacing = 0.7.sp)
                         Spacer(modifier = Modifier.height(4.dp))
-                        Text("$efficiencyPct%", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = BaroReadinessTeal)
+                        val text = efficiencyPct?.let { "$it%" } ?: "—"
+                        Text(text, fontSize = 20.sp, fontWeight = FontWeight.Bold, color = BaroReadinessTeal)
                     }
                 }
             }
@@ -172,11 +197,15 @@ fun SleepScreen(
                 Text("WHAT SHAPED SLEEP QUALITY", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = BaroTextSecondary, letterSpacing = 0.8.sp)
                 Spacer(modifier = Modifier.height(12.dp))
 
-                QualityFactorRow("Resting Heart Rate", "${rhr?.beatsPerMinute ?: 76} bpm", "✓ Lower than baseline", BaroReadinessTeal)
+                val rhrVal = rhr?.beatsPerMinute?.let { "$it bpm" } ?: "—"
+                QualityFactorRow("Resting Heart Rate", rhrVal, "✓ Lower than baseline", BaroReadinessTeal)
                 Spacer(modifier = Modifier.height(10.dp))
-                QualityFactorRow("Sleep Stages", "${(deepMins + remMins) / 60}h ${(deepMins + remMins) % 60}m restorative", "✓ High Deep & REM", BaroSleepBlue)
+                val deepRemTotal = deepMins + remMins
+                val restStr = if (deepRemTotal > 0) "${deepRemTotal / 60}h ${deepRemTotal % 60}m restorative" else "—"
+                QualityFactorRow("Sleep Stages", restStr, "✓ High Deep & REM", BaroSleepBlue)
                 Spacer(modifier = Modifier.height(10.dp))
-                QualityFactorRow("Awake / Disturbances", "${awakeMins}m awake", "✓ Minimal restlessness", BaroReadinessTeal)
+                val awakeStr = if (awakeMins > 0) "${awakeMins}m awake" else "0m awake"
+                QualityFactorRow("Awake / Disturbances", awakeStr, "✓ Minimal restlessness", BaroReadinessTeal)
             }
         }
 
@@ -191,14 +220,16 @@ fun SleepScreen(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Text("OVERNIGHT HEART RATE", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = BaroTextSecondary, letterSpacing = 0.8.sp)
-                    Text("Min 63 bpm", fontSize = 11.sp, color = BaroHeartCoral, fontWeight = FontWeight.SemiBold)
+                    val minPulse = if (overnightSamples.isNotEmpty()) overnightSamples.minOrNull() else hr?.minBpm
+                    Text(minPulse?.let { "Min $it bpm" } ?: "—", fontSize = 11.sp, color = BaroHeartCoral, fontWeight = FontWeight.SemiBold)
                 }
                 Spacer(modifier = Modifier.height(12.dp))
-                val overnightSamples = listOf(76L, 74L, 71L, 68L, 65L, 63L, 64L, 66L, 69L, 72L, 75L)
+
                 BaroSparklineWave(
                     samples = overnightSamples,
                     lineColor = BaroHeartCoral,
-                    height = 64.dp
+                    height = 64.dp,
+                    showLiveIndicator = false
                 )
                 Spacer(modifier = Modifier.height(6.dp))
                 Row(
@@ -206,7 +237,7 @@ fun SleepScreen(
                     horizontalArrangement = Arrangement.SpaceBetween
                 ) {
                     Text(viewModel.formatTime(sessionStart), fontSize = 10.sp, color = BaroTextMuted)
-                    Text("Lowest 63 bpm", fontSize = 10.sp, color = BaroTextMuted)
+                    Text("Lowest nocturnal pulse", fontSize = 10.sp, color = BaroTextMuted)
                     Text(viewModel.formatTime(sessionEnd), fontSize = 10.sp, color = BaroTextMuted)
                 }
             }
@@ -215,28 +246,29 @@ fun SleepScreen(
         Spacer(modifier = Modifier.height(18.dp))
 
         // Stages of Sleep: Proportional Breakdown & Hypnogram Timeline
-        BaroCard(modifier = Modifier.fillMaxWidth()) {
-            Column {
-                BaroStageBreakdownBar(
-                    deepMins = deepMins,
-                    remMins = remMins,
-                    lightMins = lightMins,
-                    awakeMins = awakeMins
-                )
+        if (sessionStart != null && sessionEnd != null) {
+            BaroCard(modifier = Modifier.fillMaxWidth()) {
+                Column {
+                    BaroStageBreakdownBar(
+                        deepMins = deepMins,
+                        remMins = remMins,
+                        lightMins = lightMins,
+                        awakeMins = awakeMins
+                    )
 
-                Spacer(modifier = Modifier.height(18.dp))
+                    Spacer(modifier = Modifier.height(18.dp))
 
-                BaroHypnogramTimeline(
-                    stages = sleep?.stages ?: emptyList(),
-                    sessionStart = sessionStart,
-                    sessionEnd = sessionEnd
-                )
+                    BaroHypnogramTimeline(
+                        stages = sleep.stages,
+                        sessionStart = sessionStart,
+                        sessionEnd = sessionEnd
+                    )
+                }
             }
+            Spacer(modifier = Modifier.height(18.dp))
         }
 
-        Spacer(modifier = Modifier.height(18.dp))
-
-        // A Closer Look 2x2 Grid
+        // A Closer Look 2x2 Grid (Authentic Fitbit Sleep Stages)
         Text("A CLOSER LOOK", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = BaroTextSecondary, letterSpacing = 0.8.sp)
         Spacer(modifier = Modifier.height(10.dp))
 
@@ -244,41 +276,23 @@ fun SleepScreen(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            CloserLookCard("LATENCY", "4 min", "Time to fall asleep", Modifier.weight(1f))
-            CloserLookCard("RESTLESS TIME", "${awakeMins} min", "Brief night awakenings", Modifier.weight(1f))
+            val deepText = if (deepMins > 0) "${deepMins / 60}h ${deepMins % 60}m" else "—"
+            CloserLookCard("DEEP SLEEP", deepText, "Physical restoration", Modifier.weight(1f))
+
+            val remText = if (remMins > 0) "${remMins / 60}h ${remMins % 60}m" else "—"
+            CloserLookCard("REM SLEEP", remText, "Mental & cognitive repair", Modifier.weight(1f))
         }
         Spacer(modifier = Modifier.height(12.dp))
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            val deepRemTotal = deepMins + remMins
-            val deepRemPct = ((deepRemTotal.toDouble() / actualSleepMinutes.coerceAtLeast(1)) * 100).toInt()
-            CloserLookCard("RESTORATIVE", "${deepRemTotal / 60}h ${deepRemTotal % 60}m", "$deepRemPct% of total sleep", Modifier.weight(1f))
-            CloserLookCard("CONSISTENCY", "92%", "Regular schedule", Modifier.weight(1f))
-        }
+            val lightText = if (lightMins > 0) "${lightMins / 60}h ${lightMins % 60}m" else "—"
+            CloserLookCard("LIGHT SLEEP", lightText, "Core nightly foundation", Modifier.weight(1f))
 
-        Spacer(modifier = Modifier.height(26.dp))
-
-        // 7-day Sleep History
-        if (state.dailySleepHistory.isNotEmpty()) {
-            Text("7-DAY SLEEP HISTORY", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = BaroTextSecondary, letterSpacing = 0.8.sp)
-            Spacer(modifier = Modifier.height(10.dp))
-            BaroCard(modifier = Modifier.fillMaxWidth()) {
-                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    state.dailySleepHistory.forEach { day ->
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Text(day.date.toString(), fontSize = 12.sp, color = BaroTextSecondary)
-                            val duration = day.actualSleepMinutes?.let { "${it / 60}h ${it % 60}m" } ?: "${day.sessionElapsedMinutes / 60}h ${day.sessionElapsedMinutes % 60}m"
-                            Text(duration, fontSize = 13.sp, fontWeight = FontWeight.Bold, color = BaroSleepBlue)
-                        }
-                    }
-                }
-            }
+            val awakeTotal = awakeMins + (sleep?.outOfBedMinutes ?: 0L)
+            val awakeText = if (sleep != null) "${awakeTotal} min" else "—"
+            CloserLookCard("AWAKE / RESTLESS", awakeText, "Nighttime awakenings", Modifier.weight(1f))
         }
 
         Spacer(modifier = Modifier.height(96.dp))
@@ -312,3 +326,4 @@ private fun CloserLookCard(title: String, value: String, subtitle: String, modif
         }
     }
 }
+

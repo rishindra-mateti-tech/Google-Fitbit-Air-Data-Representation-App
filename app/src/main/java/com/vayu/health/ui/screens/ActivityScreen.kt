@@ -50,13 +50,13 @@ fun ActivityScreen(
     val scrollState = rememberScrollState()
     val activity = state.activity
 
-    val stepCount = activity?.steps ?: 2224L
-    val stepFormatted = "%,d".format(stepCount)
+    val stepCount = activity?.steps
+    val stepFormatted = stepCount?.let { "%,d".format(it) } ?: "—"
 
-    val distanceKm = activity?.distanceMeters?.let { it / 1000.0 } ?: 1.68
-    val activeCal = activity?.activeCaloriesKcal ?: 284.0
-    val totalCal = activity?.totalCaloriesKcal ?: 1790.0
-    val zoneMinutes = (activeCal / 10.0).toInt().coerceIn(0, 180)
+    val distanceKm = activity?.distanceMeters?.let { it / 1000.0 }
+    val activeCal = activity?.activeCaloriesKcal
+    val totalCal = activity?.totalCaloriesKcal
+    val zoneMinutes = activeCal?.let { (it / 10.0).toInt().coerceIn(0, 180) }
 
     var selectedView by remember { mutableStateOf("Hourly") }
 
@@ -75,11 +75,21 @@ fun ActivityScreen(
         ) {
             Row(
                 verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(4.dp)
+                horizontalArrangement = Arrangement.spacedBy(2.dp)
             ) {
-                Icon(Icons.Default.ChevronLeft, null, tint = BaroTextMuted, modifier = Modifier.size(20.dp))
+                androidx.compose.material3.IconButton(
+                    onClick = { viewModel.selectPreviousDay() },
+                    modifier = Modifier.size(32.dp)
+                ) {
+                    Icon(Icons.Default.ChevronLeft, "Previous Day", tint = BaroTextMuted, modifier = Modifier.size(20.dp))
+                }
                 Text(viewModel.getBaroHeaderDate(), fontSize = 17.sp, fontWeight = FontWeight.Bold, color = BaroTextWhite)
-                Icon(Icons.Default.ChevronRight, null, tint = BaroTextMuted, modifier = Modifier.size(20.dp))
+                androidx.compose.material3.IconButton(
+                    onClick = { viewModel.selectNextDay() },
+                    modifier = Modifier.size(32.dp)
+                ) {
+                    Icon(Icons.Default.ChevronRight, "Next Day", tint = BaroTextMuted, modifier = Modifier.size(20.dp))
+                }
             }
 
             val pillText = ProvenanceFormatter.formatCompact(state.selectedSource)
@@ -139,9 +149,9 @@ fun ActivityScreen(
 
                 Spacer(modifier = Modifier.height(14.dp))
 
-                val mockHourly = listOf(0f, 0f, 0f, 0f, 0f, 0f, 0f, 150f, 420f, 310f, 120f, 250f, 480f, 210f, 180f, 90f)
+                val hourlySteps = com.vayu.health.data.model.HealthDataCalculations.calculateHourlyStepDistribution(stepCount)
                 BaroHourlyBarChart(
-                    hourlyValues = mockHourly,
+                    hourlyValues = hourlySteps,
                     barColor = BaroStrainBlue,
                     height = 68.dp
                 )
@@ -152,8 +162,8 @@ fun ActivityScreen(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween
                 ) {
-                    Text("7-Day Avg 5,302", fontSize = 11.sp, color = BaroTextMuted)
-                    Text("Daily Goal 10,000", fontSize = 11.sp, color = BaroTextMuted)
+                    Text("Fitbit Health Connect Aggregate", fontSize = 11.sp, color = BaroTextMuted)
+                    Text(if (stepCount != null) "Daily Recorded Steps" else "No records", fontSize = 11.sp, color = BaroTextMuted)
                 }
             }
         }
@@ -168,18 +178,20 @@ fun ActivityScreen(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(12.dp)
         ) {
+            val distStr = distanceKm?.let { "%.2f km".format(it) } ?: "—"
             ActivityMetricTile(
                 title = "DISTANCE",
-                value = "%.2f km".format(distanceKm),
+                value = distStr,
                 subtitle = "Health Connect aggregate",
                 icon = Icons.Default.Place,
                 accent = BaroStrainBlue,
                 modifier = Modifier.weight(1f)
             )
 
+            val actCalStr = activeCal?.let { "%.0f kcal".format(it) } ?: "—"
             ActivityMetricTile(
                 title = "ACTIVE CALORIES",
-                value = "%.0f kcal".format(activeCal),
+                value = actCalStr,
                 subtitle = "Workout & movement",
                 icon = Icons.Default.LocalFireDepartment,
                 accent = BaroZone3Orange,
@@ -193,18 +205,20 @@ fun ActivityScreen(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(12.dp)
         ) {
+            val totCalStr = totalCal?.let { "%.0f kcal".format(it) } ?: "—"
             ActivityMetricTile(
                 title = "TOTAL ENERGY",
-                value = "%.0f kcal".format(totalCal),
+                value = totCalStr,
                 subtitle = "Basal + active burn",
                 icon = Icons.Default.LocalFireDepartment,
                 accent = BaroHeartCoral,
                 modifier = Modifier.weight(1f)
             )
 
+            val zoneStr = zoneMinutes?.let { "$it min" } ?: "—"
             ActivityMetricTile(
                 title = "ZONE MINUTES",
-                value = "$zoneMinutes min",
+                value = zoneStr,
                 subtitle = "Cardio & fat burn",
                 icon = Icons.Default.Timer,
                 accent = BaroReadinessTeal,
@@ -219,7 +233,7 @@ fun ActivityScreen(
             Column {
                 Text("WEEKLY STEP COMPARISON", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = BaroTextSecondary, letterSpacing = 0.8.sp)
                 Spacer(modifier = Modifier.height(12.dp))
-                val weeklySteps = listOf(4200f, 6100f, 5400f, 7800f, 5200f, 2224f, 0f)
+                val weeklySteps = listOf(0f, 0f, 0f, 0f, 0f, (stepCount ?: 0L).toFloat(), 0f)
                 BaroWeeklyBarChart(
                     dailyValues = weeklySteps,
                     barColor = BaroStrainBlue,

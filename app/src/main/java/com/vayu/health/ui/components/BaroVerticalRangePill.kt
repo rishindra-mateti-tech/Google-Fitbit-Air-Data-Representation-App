@@ -10,92 +10,101 @@ import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.vayu.health.ui.theme.*
 
 enum class RangeStatus(val label: String, val color: Color) {
-    TYPICAL("Typical", BaroReadinessTeal),
-    HIGHER("Higher", BaroStrainBlue),
-    LOWER("Lower", BaroHeartCoral),
-    BUILDING("Building baseline", BaroTextMuted),
-    UNAVAILABLE("No record", BaroTextMuted)
+    TYPICAL("Typical", Color(0xFF00D4AA)),      // Baro Teal/Green
+    HIGHER("Higher", Color(0xFFFFA726)),        // Baro Orange
+    LOWER("Lower", Color(0xFF4DA6FF)),          // Baro Blue
+    BUILDING("Building baseline", Color(0xFF71717A)),
+    UNAVAILABLE("No readings yet", Color(0xFF71717A))
 }
 
 /**
- * Baro vertical range pill gauge.
- * Displays a vertical capsule showing the user's 30-night baseline range
- * and today's reading positioned relative to it.
+ * Baro vertical range capsule pill matching Screenshot 5.
+ * Features:
+ * - Vertical capsule (track: #242428)
+ * - Shaded typical baseline range band in middle (#40404A)
+ * - Colored hollow circular marker at today's value relative to typical range
+ * - Subtle dark empty track when building baseline
  */
 @Composable
 fun BaroVerticalRangePill(
-    currentValueFraction: Float?, // 0.0 (bottom) to 1.0 (top), or null if building/unavailable
     status: RangeStatus,
-    accentColor: Color,
     modifier: Modifier = Modifier,
-    rangeStartFraction: Float = 0.35f, // typical range lower bound
-    rangeEndFraction: Float = 0.65f,   // typical range upper bound
-    pillWidth: Dp = 6.dp,
-    pillHeight: Dp = 32.dp
+    pillWidth: Dp = 8.dp,
+    pillHeight: Dp = 40.dp
 ) {
-    Row(
-        modifier = modifier,
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(8.dp)
+    Canvas(
+        modifier = modifier
+            .width(pillWidth)
+            .height(pillHeight)
     ) {
-        // Vertical Capsule
-        Canvas(
-            modifier = Modifier
-                .width(pillWidth)
-                .height(pillHeight)
-        ) {
-            val w = size.width
-            val h = size.height
-            val corner = CornerRadius(w / 2f, w / 2f)
+        val w = size.width
+        val h = size.height
+        val corner = CornerRadius(w / 2f, w / 2f)
 
-            // Background Track
+        // Background Track
+        drawRoundRect(
+            color = Color(0xFF222226),
+            size = Size(w, h),
+            cornerRadius = corner
+        )
+
+        // If in calibrated status (TYPICAL, HIGHER, LOWER)
+        if (status == RangeStatus.TYPICAL || status == RangeStatus.HIGHER || status == RangeStatus.LOWER) {
+            // Shaded Typical Range Band (middle 35% to 65% of capsule)
+            val bandTop = h * 0.35f
+            val bandHeight = h * 0.30f
             drawRoundRect(
-                color = BaroPillTrack,
-                size = Size(w, h),
-                cornerRadius = corner
+                color = Color(0xFF40404A),
+                topLeft = Offset(0f, bandTop),
+                size = Size(w, bandHeight),
+                cornerRadius = CornerRadius(w / 2f, w / 2f)
             )
 
-            if (currentValueFraction != null) {
-                // Typical Range Shaded Band
-                val bandTop = h * (1f - rangeEndFraction)
-                val bandBottom = h * (1f - rangeStartFraction)
-                val bandH = (bandBottom - bandTop).coerceAtLeast(4.dp.toPx())
+            // Center indicator line
+            drawLine(
+                color = Color(0x30FFFFFF),
+                start = Offset(w / 2f, 4.dp.toPx()),
+                end = Offset(w / 2f, h - 4.dp.toPx()),
+                strokeWidth = 1.dp.toPx()
+            )
 
-                drawRoundRect(
-                    color = BaroPillRange,
-                    topLeft = Offset(0f, bandTop),
-                    size = Size(w, bandH),
-                    cornerRadius = CornerRadius(w / 2f, w / 2f)
-                )
-
-                // Today's Reading Indicator Dot
-                val dotY = (h * (1f - currentValueFraction.coerceIn(0.05f, 0.95f)))
-                drawCircle(
-                    color = accentColor,
-                    radius = w * 0.9f,
-                    center = Offset(w / 2f, dotY)
-                )
+            // Marker position based on status
+            val markerY = when (status) {
+                RangeStatus.HIGHER -> h * 0.18f // Above the typical band
+                RangeStatus.TYPICAL -> h * 0.50f // Inside the typical band
+                RangeStatus.LOWER -> h * 0.82f  // Below the typical band
+                else -> h * 0.50f
             }
-        }
 
-        // Status Text
-        val prefix = when (status) {
-            RangeStatus.TYPICAL -> "✓ "
-            RangeStatus.HIGHER -> "^ "
-            RangeStatus.LOWER -> "v "
-            else -> ""
+            // Draw outer dark mask
+            drawCircle(
+                color = Color(0xFF121214),
+                radius = w * 0.85f,
+                center = Offset(w / 2f, markerY)
+            )
+
+            // Draw colored indicator ring (as seen in Screenshot 5)
+            drawCircle(
+                color = status.color,
+                radius = w * 0.80f,
+                center = Offset(w / 2f, markerY),
+                style = Stroke(width = 2.dp.toPx())
+            )
+
+            // Draw inner dot
+            drawCircle(
+                color = status.color,
+                radius = w * 0.30f,
+                center = Offset(w / 2f, markerY)
+            )
         }
-        Text(
-            text = "$prefix${status.label}",
-            fontSize = 11.sp,
-            color = status.color,
-            maxLines = 1
-        )
     }
 }

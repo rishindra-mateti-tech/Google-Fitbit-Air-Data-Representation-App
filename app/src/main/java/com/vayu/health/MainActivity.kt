@@ -4,6 +4,7 @@ import android.content.Intent
 import android.net.Uri
 import android.os.Bundle
 import androidx.activity.ComponentActivity
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.activity.result.ActivityResultLauncher
 import androidx.activity.viewModels
@@ -19,6 +20,8 @@ import androidx.compose.material.icons.filled.Security
 import androidx.compose.material.icons.filled.SystemUpdate
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
@@ -74,7 +77,16 @@ class MainActivity : ComponentActivity() {
         setContent {
             VayuTheme {
                 val uiState by viewModel.uiState.collectAsState()
+                val activeMetricDetail by viewModel.activeMetricDetail.collectAsState()
                 var selectedTab by remember { mutableStateOf(VayuTab.OVERVIEW) }
+
+                BackHandler(enabled = activeMetricDetail != null || selectedTab != VayuTab.OVERVIEW) {
+                    if (activeMetricDetail != null) {
+                        viewModel.closeMetricDetail()
+                    } else if (selectedTab != VayuTab.OVERVIEW) {
+                        selectedTab = VayuTab.OVERVIEW
+                    }
+                }
 
                 Surface(
                     modifier = Modifier.fillMaxSize(),
@@ -217,37 +229,49 @@ class MainActivity : ComponentActivity() {
                                 }
                             }
 
-                            // Active Screen Content
-                            AnimatedContent(
-                                modifier = Modifier
-                                    .weight(1f)
-                                    .fillMaxWidth(),
-                                targetState = selectedTab,
-                                transitionSpec = { fadeIn() togetherWith fadeOut() },
-                                label = "Vayu screen transition"
-                            ) {
-                                when (it) {
-                                    VayuTab.OVERVIEW -> BaroOverviewScreen(
-                                        state = uiState,
-                                        viewModel = viewModel,
-                                        onOpenTab = { selectedTab = it }
-                                    )
-                                    VayuTab.SLEEP -> SleepScreen(
-                                        state = uiState,
-                                        viewModel = viewModel
-                                    )
-                                    VayuTab.VITALS -> HeartVitalsScreen(
-                                        state = uiState,
-                                        viewModel = viewModel
-                                    )
-                                    VayuTab.ACTIVITY -> ActivityScreen(
-                                        state = uiState,
-                                        viewModel = viewModel
-                                    )
-                                    VayuTab.INSPECTOR -> InspectorScreen(
-                                        state = uiState,
-                                        viewModel = viewModel
-                                    )
+                            // Active Screen Content or Dedicated Metric Detail
+                            if (activeMetricDetail != null) {
+                                MetricDetailScreen(
+                                    metricType = activeMetricDetail!!,
+                                    state = uiState,
+                                    viewModel = viewModel,
+                                    onBack = { viewModel.closeMetricDetail() },
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .fillMaxWidth()
+                                )
+                            } else {
+                                AnimatedContent(
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .fillMaxWidth(),
+                                    targetState = selectedTab,
+                                    transitionSpec = { fadeIn() togetherWith fadeOut() },
+                                    label = "Vayu screen transition"
+                                ) {
+                                    when (it) {
+                                        VayuTab.OVERVIEW -> BaroOverviewScreen(
+                                            state = uiState,
+                                            viewModel = viewModel,
+                                            onOpenTab = { selectedTab = it }
+                                        )
+                                        VayuTab.SLEEP -> SleepScreen(
+                                            state = uiState,
+                                            viewModel = viewModel
+                                        )
+                                        VayuTab.VITALS -> HeartVitalsScreen(
+                                            state = uiState,
+                                            viewModel = viewModel
+                                        )
+                                        VayuTab.ACTIVITY -> ActivityScreen(
+                                            state = uiState,
+                                            viewModel = viewModel
+                                        )
+                                        VayuTab.INSPECTOR -> InspectorScreen(
+                                            state = uiState,
+                                            viewModel = viewModel
+                                        )
+                                    }
                                 }
                             }
 

@@ -88,8 +88,11 @@ Engineered for Samsung's Dynamic AMOLED 2X displays (Samsung Galaxy S25 Ultra):
   * Resting Heart Rate, HRV, Respiratory Rate, SpO₂, Respiration Temp, and Skin Temperature variation.
   * Each card features a custom **Vertical Baseline Range Pill** showing the user's 30-night typical range band and today's reading status (`✓ Typical`, `^ Higher`, `v Lower`, or `Building baseline`).
 * **Detail Architecture**:
+  * **Individual Metric Detail Screens**: Every card on the dashboard and vitals screen has its own dedicated screen (Readiness/Recovery with calibration state, Continuous Heart Rate with live pulse indicator, Steps distribution, Resting HR, HRV, Respiratory Rate, SpO₂, Respiration Temp, Skin Temp variation, Zone Minutes, and Stress).
+  * **System Back Navigation**: Native predictive back gesture support navigates seamlessly one level back rather than exiting the application.
+  * **Interactive Multi-Day Stepper**: `< Today, 16 Oct >` controls across all screens allow traversing past Health Connect windows accurately.
   * **Sleep**: 4-lane Hypnogram swim-lane timeline (Awake, REM, Light, Deep), proportional breakdown bar, and overnight HR curve.
-  * **Vitals**: 63–151 bpm hero range, Zone dashed reference lines (Zone 4 Red, Zone 2 Blue, RHR Teal), and interactive trend views with W | M | 6M picker.
+  * **Vitals**: Dynamic pulse range, zone dashed reference lines (Zone 4 Red, Zone 2 Blue, RHR Teal), and vertical baseline range pills.
   * **Navigation**: Floating capsule bottom bar (`BaroFloatingNavBar`) elevated with rounded 32.dp pill container and cyan glow indicator.
 
 ---
@@ -122,7 +125,7 @@ Vayu is designed to isolate your Fitbit data from other apps that may write to H
 
 ## 🧪 Testing & Quality Assurance
 
-### Unit Tests (`app/src/test`): 27 Passed (100%)
+### Unit Tests (`app/src/test`): 28 Passed (100%)
 * `ProvenanceFormatterTest`: Tests friendly display name formatting, single-word compact pill generation, system hash package detection, and source-aware empty states.
 * `HealthDataMappingTest`:
   * `testFitbitOnlyFiltering_strictlyFiltersRecords`: Verifies strict origin matching and zero leakage.
@@ -135,12 +138,14 @@ Vayu is designed to isolate your Fitbit data from other apps that may write to H
   * `testSleepMetric_nullActualSleepWhenNoStagesRecorded`: Validates nullable actual sleep.
   * `testHeartRateCalculations_accurateAggregations`: Verifies pulse sample aggregations.
   * `testSkinTemperature_accurateAverageAndDeltas`: Verifies skin temperature delta calculations.
+  * `testHealthDateRangeCalculator_timezoneAndWindowBoundaries`: Verifies current day 24h lookback windowing.
+  * `testHealthDateRangeCalculator_pastDateWindowBoundaries`: Verifies historical day 12h evening lookback windowing.
   * `testTruthfulSourceAttribution_packageNamesPreserved`: Validates `DataOrigin` string preservation.
   * `testRepository_handlesSdkUnavailable` & `testRepository_handlesSdkUpdateRequired`: Verifies SDK state resilience.
   * `testRepository_handlesEmptyPermissions` & `testRepository_handlesPartialMetricFailuresGracefully`: Verifies partial permissions.
 
 > [!NOTE]
-> All 27 unit tests executed and passed cleanly (`BUILD SUCCESSFUL`). Android Lint completed with 0 errors (`lintDebug`).
+> All 28 unit tests executed and passed cleanly (`BUILD SUCCESSFUL`). Android Lint completed with 0 errors (`lintDebug`).
 
 ---
 
@@ -148,7 +153,7 @@ Vayu is designed to isolate your Fitbit data from other apps that may write to H
 
 | File | Type | SHA-256 Checksum |
 | :--- | :--- | :--- |
-| **[`Vayu-Personal-Test.apk`](https://github.com/rishindra-mateti-tech/Google-Fitbit-Air-Data-Representation-App/releases/download/v1.0.4/Vayu-Personal-Test.apk)** | Sideloadable debug APK with authentic custom app icon for personal testing on Samsung Galaxy S25 Ultra | `1572B5CC5E6648020233A84622BEF8AF15ACDD22A5940594E565A5253CE8C5D8` |
+| **[`Vayu-Personal-Test.apk`](https://github.com/rishindra-mateti-tech/Google-Fitbit-Air-Data-Representation-App/releases/download/v1.0.4/Vayu-Personal-Test.apk)** | Sideloadable debug APK with authentic custom app icon for personal testing on Samsung Galaxy S25 Ultra | `D12C0FD5E5D65EB3B3A391243E8F9EC5C4756888FE3E5EB77B95B911B1CAECD9` |
 | **`Vayu-debug.apk`** | Debug Build | `D8C3FD78ADE8B58FA3835BDF34DDEF9E6C902B0C403282E977732A003E9C51CA` |
 | **`Vayu-release.apk`** | Production Release Build | `9FDAC1331A6E1D615892954BB98A06DA70FA87B745094848BBF22594B00815DC` |
 
@@ -156,7 +161,7 @@ Vayu is designed to isolate your Fitbit data from other apps that may write to H
 
 ## 📲 Sideloading onto Samsung Galaxy S25 Ultra
 
-1. Download **[`Vayu-Personal-Test.apk`](https://github.com/rishindra-mateti-tech/Google-Fitbit-Air-Data-Representation-App/releases/download/v1.0.0/Vayu-Personal-Test.apk)** directly to your phone.
+1. Download **[`Vayu-Personal-Test.apk`](https://github.com/rishindra-mateti-tech/Google-Fitbit-Air-Data-Representation-App/releases/download/v1.0.4/Vayu-Personal-Test.apk)** directly to your phone.
 2. Open **My Files** > **Downloads** and tap **`Vayu-Personal-Test.apk`**.
 3. If prompted by One UI ("Install unknown apps"), toggle **Allow from this source**.
 4. Tap **Install** to finish sideloading.

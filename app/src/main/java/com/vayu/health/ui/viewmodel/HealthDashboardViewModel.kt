@@ -5,11 +5,13 @@ import androidx.lifecycle.viewModelScope
 import com.vayu.health.data.HealthMetricsRepository
 import com.vayu.health.data.HealthSourcePreferences
 import com.vayu.health.data.model.HealthDashboardState
+import com.vayu.health.data.model.MetricDetailType
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import java.time.Instant
+import java.time.LocalDate
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 
@@ -28,6 +30,12 @@ class HealthDashboardViewModel(
     )
     val uiState: StateFlow<HealthDashboardState> = _uiState.asStateFlow()
 
+    private val _selectedDate = MutableStateFlow(LocalDate.now())
+    val selectedDate: StateFlow<LocalDate> = _selectedDate.asStateFlow()
+
+    private val _activeMetricDetail = MutableStateFlow<MetricDetailType?>(null)
+    val activeMetricDetail: StateFlow<MetricDetailType?> = _activeMetricDetail.asStateFlow()
+
     private val _isFirstRun = MutableStateFlow(sourcePreferences?.isFirstRun() ?: false)
     val isFirstRun: StateFlow<Boolean> = _isFirstRun.asStateFlow()
 
@@ -39,9 +47,30 @@ class HealthDashboardViewModel(
     fun loadMetrics(forceRefresh: Boolean = false) {
         viewModelScope.launch {
             _uiState.value = _uiState.value.copy(isLoading = true)
-            val result = repository.getTodayDashboardState(sourceFilter = currentSource)
-            
-            _uiState.value = result
+            val date = _selectedDate.value
+            val result = repository.getTodayDashboardState(sourceFilter = currentSource, targetDate = date)
+            val calculatedSleepScore = com.vayu.health.data.model.HealthDataCalculations.calculateSleepScore(result.sleep)
+            _uiState.value = result.copy(sleepScore = calculatedSleepScore)
+        }
+    }
+
+    fun openMetricDetail(metric: MetricDetailType) {
+        _activeMetricDetail.value = metric
+    }
+
+    fun closeMetricDetail() {
+        _activeMetricDetail.value = null
+    }
+
+    fun selectPreviousDay() {
+        _selectedDate.value = _selectedDate.value.minusDays(1)
+        loadMetrics()
+    }
+
+    fun selectNextDay() {
+        if (_selectedDate.value.isBefore(LocalDate.now())) {
+            _selectedDate.value = _selectedDate.value.plusDays(1)
+            loadMetrics()
         }
     }
 
@@ -65,9 +94,14 @@ class HealthDashboardViewModel(
     }
 
     fun getBaroHeaderDate(): String {
-        val formatter = DateTimeFormatter.ofPattern("d MMM")
-            .withZone(ZoneId.systemDefault())
-        return "Today, ${formatter.format(Instant.now())}"
+        val today = LocalDate.now()
+        val sel = _selectedDate.value
+        val dMmm = DateTimeFormatter.ofPattern("d MMM")
+        return when (sel) {
+            today -> "Today, ${dMmm.format(sel)}"
+            today.minusDays(1) -> "Yesterday, ${dMmm.format(sel)}"
+            else -> DateTimeFormatter.ofPattern("EEE, d MMM").format(sel)
+        }
     }
 
     fun formatTime(instant: Instant?): String {

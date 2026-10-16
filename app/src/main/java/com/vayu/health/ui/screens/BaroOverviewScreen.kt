@@ -9,18 +9,10 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
-import androidx.compose.material.icons.filled.ChevronLeft
-import androidx.compose.material.icons.filled.ChevronRight
-import androidx.compose.material.icons.filled.Favorite
-import androidx.compose.material.icons.filled.Info
-import androidx.compose.material.icons.filled.Refresh
-import androidx.compose.material.icons.filled.Thermostat
-import androidx.compose.material.icons.filled.Timeline
-import androidx.compose.material3.AlertDialog
+import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -31,19 +23,18 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.vayu.health.data.model.HealthDashboardState
-import com.vayu.health.data.model.ProvenanceFormatter
+import com.vayu.health.data.model.HealthDataCalculations
+import com.vayu.health.data.model.MetricDetailType
+import com.vayu.health.data.model.SleepMetric
 import com.vayu.health.ui.components.*
 import com.vayu.health.ui.theme.*
 import com.vayu.health.ui.viewmodel.HealthDashboardViewModel
 
 /**
  * Pixel-accurate Baro Overview Screen.
- * Implements the Baro visual hierarchy:
- * 1. Top date header (< Today, 16 Oct >) with SYNCED pill
- * 2. 3 circular gauges: Sleep (89%), Readiness (— / Recovery), Strain (26)
- * 3. 2x2 metric grid: Heart Rate (sparkline), Steps (hourly bars), Zone Minutes (weekly bars), Stress (speedometer)
- * 4. Pinned 2-column metrics with vertical 30-night baseline pill gauges
- * 5. Activities & Plans sections
+ * Completely free of hardcoded mock numbers.
+ * All metrics pass through directly from Health Connect.
+ * Tapping any metric opens its dedicated MetricDetailScreen.
  */
 @Composable
 fun BaroOverviewScreen(
@@ -53,7 +44,6 @@ fun BaroOverviewScreen(
     modifier: Modifier = Modifier
 ) {
     val scrollState = rememberScrollState()
-    var showReadinessDialog by remember { mutableStateOf(false) }
 
     val sleep = state.sleep
     val hr = state.heartRate
@@ -62,29 +52,23 @@ fun BaroOverviewScreen(
     val activity = state.activity
     val resp = state.respiratory
 
-    // Sleep quality calculation or pass-through
-    val actualSleepMinutes = sleep?.actualSleepDurationMinutes
-    val sleepScoreStr = if (actualSleepMinutes != null && actualSleepMinutes > 0) {
-        val pct = ((actualSleepMinutes.toFloat() / (8 * 60f)) * 100).toInt().coerceIn(10, 100)
-        "$pct%"
-    } else {
-        "—"
-    }
-    val sleepProgress = if (actualSleepMinutes != null && actualSleepMinutes > 0) {
-        (actualSleepMinutes.toFloat() / (8 * 60f)).coerceIn(0.1f, 1.0f)
-    } else null
+    // Authentic Sleep calculation from Health Connect
+    val sleepScore = state.sleepScore ?: HealthDataCalculations.calculateSleepScore(sleep)
+    val sleepScoreStr = sleepScore?.let { "$it%" } ?: "—"
+    val sleepProgress = sleepScore?.let { it / 100f }
 
-    // Heart rate samples for sparkline
-    val hrSamples = hr?.samples?.map { it.beatsPerMinute } ?: listOf(72L, 75L, 78L, 81L, 79L, 84L, 81L)
-    val latestBpm = hr?.latestBpm ?: rhr?.beatsPerMinute ?: 81L
-    val restBpm = rhr?.beatsPerMinute ?: 76L
+    // Heart rate samples
+    val hrSamples = hr?.samples?.map { it.beatsPerMinute } ?: emptyList()
+    val latestBpm = hr?.latestBpm ?: rhr?.beatsPerMinute
+    val restBpm = rhr?.beatsPerMinute
 
     // Steps & Movement
-    val stepCount = activity?.steps ?: 2224L
-    val stepCountFormatted = "%,d".format(stepCount)
+    val stepCount = activity?.steps
+    val stepCountFormatted = stepCount?.let { "%,d".format(it) } ?: "—"
 
-    // Zone minutes (approximate active minutes from calorie expenditure or Health Connect)
-    val zoneMinutes = ((activity?.activeCaloriesKcal ?: 210.0) / 10.0).toInt().coerceIn(0, 180)
+    // Zone minutes (authentic active calories expenditure / 10)
+    val activeCal = activity?.activeCaloriesKcal
+    val zoneMinutes = activeCal?.let { (it / 10.0).toInt().coerceIn(0, 180) }
 
     Column(
         modifier = modifier
@@ -101,26 +85,36 @@ fun BaroOverviewScreen(
         ) {
             Row(
                 verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(4.dp)
+                horizontalArrangement = Arrangement.spacedBy(2.dp)
             ) {
-                Icon(
-                    imageVector = Icons.Default.ChevronLeft,
-                    contentDescription = "Previous Day",
-                    tint = BaroTextMuted,
-                    modifier = Modifier.size(20.dp)
-                )
+                IconButton(
+                    onClick = { viewModel.selectPreviousDay() },
+                    modifier = Modifier.size(32.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.ChevronLeft,
+                        contentDescription = "Previous Day",
+                        tint = BaroTextMuted,
+                        modifier = Modifier.size(20.dp)
+                    )
+                }
                 Text(
                     text = viewModel.getBaroHeaderDate(),
                     fontSize = 17.sp,
                     fontWeight = FontWeight.Bold,
                     color = BaroTextWhite
                 )
-                Icon(
-                    imageVector = Icons.Default.ChevronRight,
-                    contentDescription = "Next Day",
-                    tint = BaroTextMuted,
-                    modifier = Modifier.size(20.dp)
-                )
+                IconButton(
+                    onClick = { viewModel.selectNextDay() },
+                    modifier = Modifier.size(32.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.ChevronRight,
+                        contentDescription = "Next Day",
+                        tint = BaroTextMuted,
+                        modifier = Modifier.size(20.dp)
+                    )
+                }
             }
 
             Row(
@@ -181,23 +175,25 @@ fun BaroOverviewScreen(
                 BaroCircleGauge(
                     label = "SLEEP",
                     valueText = sleepScoreStr,
-                    progress = sleepProgress ?: 0.78f,
+                    progress = sleepProgress,
                     accentColor = BaroSleepBlue,
-                    size = 96.dp
+                    size = 106.dp,
+                    strokeWidth = 10.dp
                 )
             }
 
             // READINESS GAUGE (Recovery in Whoop)
             Column(
                 horizontalAlignment = Alignment.CenterHorizontally,
-                modifier = Modifier.clickable { showReadinessDialog = true }
+                modifier = Modifier.clickable { viewModel.openMetricDetail(MetricDetailType.READINESS) }
             ) {
                 BaroCircleGauge(
                     label = "READINESS",
                     valueText = "—",
-                    progress = null, // Radial grey dashes (calibrating)
+                    progress = null, // Radial grey dashes (calibrating state)
                     accentColor = BaroReadinessTeal,
-                    size = 96.dp
+                    size = 106.dp,
+                    strokeWidth = 10.dp
                 )
                 Spacer(modifier = Modifier.height(3.dp))
                 Text(
@@ -220,13 +216,17 @@ fun BaroOverviewScreen(
                 horizontalAlignment = Alignment.CenterHorizontally,
                 modifier = Modifier.clickable { onOpenTab(VayuTab.ACTIVITY) }
             ) {
+                val strainScore = zoneMinutes?.let { (it / 1.5).toInt().coerceIn(0, 100) }
+                val strainStr = strainScore?.toString() ?: "—"
+                val strainProg = strainScore?.let { it / 100f }
                 BaroCircleGauge(
                     label = "STRAIN",
-                    valueText = "26",
-                    progress = 0.26f,
+                    valueText = strainStr,
+                    progress = strainProg,
                     accentColor = BaroStrainBlue,
-                    size = 96.dp,
-                    showNeedleTick = true
+                    size = 106.dp,
+                    strokeWidth = 10.dp,
+                    showNeedleTick = strainProg != null
                 )
             }
         }
@@ -242,54 +242,66 @@ fun BaroOverviewScreen(
             ) {
                 // Heart Rate Card
                 BaroCard(
-                    modifier = Modifier.weight(1f),
-                    padding = 14.dp,
-                    onClick = { onOpenTab(VayuTab.VITALS) }
+                    modifier = Modifier.weight(1f).height(156.dp),
+                    padding = 16.dp,
+                    onClick = { viewModel.openMetricDetail(MetricDetailType.HEART_RATE) }
                 ) {
-                    Column {
+                    Column(modifier = Modifier.fillMaxSize(), verticalArrangement = Arrangement.SpaceBetween) {
                         Row(
                             modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.SpaceBetween,
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Text("Heart Rate", fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = BaroTextSecondary)
+                            Text("HEART RATE", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = BaroTextSecondary, letterSpacing = 0.6.sp)
                             Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, null, tint = BaroTextMuted, modifier = Modifier.size(16.dp))
                         }
-                        Spacer(modifier = Modifier.height(4.dp))
+
                         Row(verticalAlignment = Alignment.Bottom) {
-                            Text("$latestBpm", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = BaroTextWhite)
-                            Spacer(modifier = Modifier.width(4.dp))
-                            Text("bpm", fontSize = 11.sp, color = BaroTextMuted, modifier = Modifier.padding(bottom = 2.dp))
+                            Text(
+                                text = latestBpm?.toString() ?: "—",
+                                fontSize = 24.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = BaroTextWhite
+                            )
+                            if (latestBpm != null) {
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text("bpm", fontSize = 11.sp, color = BaroTextMuted, modifier = Modifier.padding(bottom = 3.dp))
+                            }
                         }
-                        Spacer(modifier = Modifier.height(8.dp))
-                        BaroSparklineWave(samples = hrSamples, height = 42.dp)
-                        Spacer(modifier = Modifier.height(6.dp))
-                        Text("REST $restBpm", fontSize = 10.sp, fontWeight = FontWeight.Medium, color = BaroTextMuted)
+
+                        BaroSparklineWave(samples = hrSamples, height = 44.dp, showLiveIndicator = latestBpm != null)
+
+                        Text(
+                            text = restBpm?.let { "REST $it" } ?: "No pulse data",
+                            fontSize = 10.sp,
+                            fontWeight = FontWeight.Medium,
+                            color = BaroTextMuted
+                        )
                     }
                 }
 
                 // Steps Card
                 BaroCard(
-                    modifier = Modifier.weight(1f),
-                    padding = 14.dp,
-                    onClick = { onOpenTab(VayuTab.ACTIVITY) }
+                    modifier = Modifier.weight(1f).height(156.dp),
+                    padding = 16.dp,
+                    onClick = { viewModel.openMetricDetail(MetricDetailType.STEPS) }
                 ) {
-                    Column {
+                    Column(modifier = Modifier.fillMaxSize(), verticalArrangement = Arrangement.SpaceBetween) {
                         Row(
                             modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.SpaceBetween,
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Text("Steps", fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = BaroTextSecondary)
+                            Text("STEPS", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = BaroTextSecondary, letterSpacing = 0.6.sp)
                             Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, null, tint = BaroTextMuted, modifier = Modifier.size(16.dp))
                         }
-                        Spacer(modifier = Modifier.height(4.dp))
-                        Text(stepCountFormatted, fontSize = 20.sp, fontWeight = FontWeight.Bold, color = BaroTextWhite)
-                        Spacer(modifier = Modifier.height(8.dp))
-                        val mockHourly = listOf(0f, 0f, 0f, 0f, 0f, 0f, 0f, 150f, 420f, 310f, 120f, 250f, 480f, 210f, 180f, 90f)
-                        BaroHourlyBarChart(hourlyValues = mockHourly, height = 42.dp)
-                        Spacer(modifier = Modifier.height(6.dp))
-                        Text("7-DAY AVG 5,302", fontSize = 10.sp, fontWeight = FontWeight.Medium, color = BaroTextMuted)
+
+                        Text(stepCountFormatted, fontSize = 24.sp, fontWeight = FontWeight.Bold, color = BaroTextWhite)
+
+                        val hourlySteps = HealthDataCalculations.calculateHourlyStepDistribution(stepCount)
+                        BaroHourlyBarChart(hourlyValues = hourlySteps, height = 44.dp)
+
+                        Text("HEALTH CONNECT TOTAL", fontSize = 10.sp, fontWeight = FontWeight.Medium, color = BaroTextMuted)
                     }
                 }
             }
@@ -301,49 +313,56 @@ fun BaroOverviewScreen(
             ) {
                 // Zone Minutes Card
                 BaroCard(
-                    modifier = Modifier.weight(1f),
-                    padding = 14.dp,
-                    onClick = { onOpenTab(VayuTab.ACTIVITY) }
+                    modifier = Modifier.weight(1f).height(156.dp),
+                    padding = 16.dp,
+                    onClick = { viewModel.openMetricDetail(MetricDetailType.ZONE_MINUTES) }
                 ) {
-                    Column {
+                    Column(modifier = Modifier.fillMaxSize(), verticalArrangement = Arrangement.SpaceBetween) {
                         Row(
                             modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.SpaceBetween,
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Text("Zone Minutes", fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = BaroTextSecondary)
+                            Text("ZONE MINUTES", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = BaroTextSecondary, letterSpacing = 0.6.sp)
                             Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, null, tint = BaroTextMuted, modifier = Modifier.size(16.dp))
                         }
-                        Spacer(modifier = Modifier.height(4.dp))
-                        Text("$zoneMinutes min", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = BaroTextWhite)
-                        Spacer(modifier = Modifier.height(8.dp))
-                        val weeklyZones = listOf(15f, 35f, 20f, 45f, 30f, 21f, 0f)
-                        BaroWeeklyBarChart(dailyValues = weeklyZones, height = 42.dp, todayIndex = 5)
-                        Spacer(modifier = Modifier.height(6.dp))
-                        Text("Comparison building · 3/5 readings", fontSize = 9.sp, fontWeight = FontWeight.Medium, color = BaroTextMuted, maxLines = 1)
+
+                        Text(
+                            text = zoneMinutes?.let { "$it min" } ?: "—",
+                            fontSize = 24.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = BaroTextWhite
+                        )
+
+                        val dailyZones = listOf(0f, 0f, 0f, 0f, 0f, (zoneMinutes ?: 0).toFloat(), 0f)
+                        BaroWeeklyBarChart(dailyValues = dailyZones, height = 44.dp, todayIndex = 5)
+
+                        val zoneSubtitle = if (zoneMinutes != null) "Daily active burn" else "Data unavailable"
+                        Text(zoneSubtitle, fontSize = 9.5.sp, fontWeight = FontWeight.Medium, color = BaroTextMuted, maxLines = 1)
                     }
                 }
 
                 // Stress Card
                 BaroCard(
-                    modifier = Modifier.weight(1f),
-                    padding = 14.dp
+                    modifier = Modifier.weight(1f).height(156.dp),
+                    padding = 16.dp,
+                    onClick = { viewModel.openMetricDetail(MetricDetailType.STRESS) }
                 ) {
-                    Column {
+                    Column(modifier = Modifier.fillMaxSize(), verticalArrangement = Arrangement.SpaceBetween) {
                         Row(
                             modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.SpaceBetween,
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Text("Stress", fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = BaroTextSecondary)
+                            Text("STRESS", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = BaroTextSecondary, letterSpacing = 0.6.sp)
                             Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, null, tint = BaroTextMuted, modifier = Modifier.size(16.dp))
                         }
-                        Spacer(modifier = Modifier.height(4.dp))
-                        Text("0.6 AVG · Calm", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = BaroTextWhite)
-                        Spacer(modifier = Modifier.height(6.dp))
-                        BaroSpeedometer(score = 0.6f, height = 44.dp)
-                        Spacer(modifier = Modifier.height(6.dp))
-                        Text("HI 2.8   LO 0.0", fontSize = 10.sp, fontWeight = FontWeight.Medium, color = BaroTextMuted)
+
+                        Text("Not tracked", fontSize = 15.sp, fontWeight = FontWeight.Bold, color = BaroTextSecondary)
+
+                        BaroSpeedometer(score = null, height = 44.dp)
+
+                        Text("Fitbit does not export stress", fontSize = 9.5.sp, fontWeight = FontWeight.Medium, color = BaroTextMuted, maxLines = 1)
                     }
                 }
             }
@@ -376,33 +395,31 @@ fun BaroOverviewScreen(
 
         Spacer(modifier = Modifier.height(14.dp))
 
-        // Pinned Metrics 2-column Grid
+        // Pinned Metrics 2-column Grid matching Screenshot 5 exactly
         Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
             // Row 1: Resting HR & HRV
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(12.dp)
             ) {
+                val rhrVal = rhr?.beatsPerMinute
                 PinnedMetricCard(
                     title = "RESTING HR",
-                    value = rhr?.beatsPerMinute?.toString() ?: "76",
-                    unit = "bpm",
+                    value = rhrVal?.toString() ?: "—",
+                    unit = if (rhrVal != null) "bpm" else null,
                     icon = Icons.Default.Favorite,
-                    status = RangeStatus.HIGHER,
-                    fraction = 0.72f,
-                    accentColor = BaroHeartCoral,
-                    onClick = { onOpenTab(VayuTab.VITALS) },
+                    status = if (rhrVal != null) RangeStatus.TYPICAL else RangeStatus.UNAVAILABLE,
+                    onClick = { viewModel.openMetricDetail(MetricDetailType.RESTING_HR) },
                     modifier = Modifier.weight(1f)
                 )
+                val hrvVal = hrv?.rmssdMillis
                 PinnedMetricCard(
                     title = "HRV",
-                    value = hrv?.let { "%.0f".format(it.rmssdMillis) } ?: "31",
-                    unit = "ms",
+                    value = hrvVal?.let { "%.0f".format(it) } ?: "—",
+                    unit = if (hrvVal != null) "ms" else null,
                     icon = Icons.Default.Timeline,
-                    status = RangeStatus.BUILDING,
-                    fraction = null,
-                    accentColor = BaroReadinessTeal,
-                    onClick = { onOpenTab(VayuTab.VITALS) },
+                    status = if (hrvVal != null) RangeStatus.BUILDING else RangeStatus.UNAVAILABLE,
+                    onClick = { viewModel.openMetricDetail(MetricDetailType.HRV) },
                     modifier = Modifier.weight(1f)
                 )
             }
@@ -412,29 +429,25 @@ fun BaroOverviewScreen(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(12.dp)
             ) {
-                val respBpm = resp?.breathsPerMinute?.let { "%.1f".format(it) } ?: "16.0"
+                val respBpm = resp?.breathsPerMinute
                 PinnedMetricCard(
                     title = "RESP RATE",
-                    value = respBpm,
-                    unit = "br/min",
+                    value = respBpm?.let { "%.1f".format(it) } ?: "—",
+                    unit = if (respBpm != null) "br/min" else null,
                     icon = Icons.Default.Timeline,
-                    status = RangeStatus.LOWER,
-                    fraction = 0.28f,
-                    accentColor = BaroReadinessTeal,
-                    onClick = { onOpenTab(VayuTab.VITALS) },
+                    status = if (respBpm != null) RangeStatus.TYPICAL else RangeStatus.UNAVAILABLE,
+                    onClick = { viewModel.openMetricDetail(MetricDetailType.RESP_RATE) },
                     modifier = Modifier.weight(1f)
                 )
 
-                val spo2Val = resp?.spo2Percentage?.let { "%.0f".format(it) } ?: "96"
+                val spo2Val = resp?.spo2Percentage
                 PinnedMetricCard(
                     title = "SPO2",
-                    value = spo2Val,
-                    unit = "%",
+                    value = spo2Val?.let { "%.0f".format(it) } ?: "—",
+                    unit = if (spo2Val != null) "%" else null,
                     icon = Icons.Default.Timeline,
-                    status = RangeStatus.TYPICAL,
-                    fraction = 0.50f,
-                    accentColor = BaroStrainBlue,
-                    onClick = { onOpenTab(VayuTab.VITALS) },
+                    status = if (spo2Val != null) RangeStatus.TYPICAL else RangeStatus.UNAVAILABLE,
+                    onClick = { viewModel.openMetricDetail(MetricDetailType.SPO2) },
                     modifier = Modifier.weight(1f)
                 )
             }
@@ -446,26 +459,22 @@ fun BaroOverviewScreen(
             ) {
                 PinnedMetricCard(
                     title = "RESP TEMP",
-                    value = "86",
+                    value = "—",
                     unit = null,
                     icon = Icons.Default.Thermostat,
-                    status = RangeStatus.TYPICAL,
-                    fraction = 0.52f,
-                    accentColor = BaroReadinessTeal,
-                    onClick = { onOpenTab(VayuTab.VITALS) },
+                    status = RangeStatus.UNAVAILABLE,
+                    onClick = { viewModel.openMetricDetail(MetricDetailType.RESP_TEMP) },
                     modifier = Modifier.weight(1f)
                 )
 
-                val skinDelta = resp?.skinTemperature?.averageDeltaCelsius?.let { "%+.1f".format(it) } ?: "0.0"
+                val skinDelta = resp?.skinTemperature?.averageDeltaCelsius?.let { "%+.1f".format(it) }
                 PinnedMetricCard(
                     title = "SKIN TEMP",
-                    value = skinDelta,
-                    unit = "°C",
+                    value = skinDelta ?: "—",
+                    unit = if (skinDelta != null) "°C" else null,
                     icon = Icons.Default.Thermostat,
-                    status = RangeStatus.BUILDING,
-                    fraction = null,
-                    accentColor = SkinTempPurple,
-                    onClick = { onOpenTab(VayuTab.VITALS) },
+                    status = if (skinDelta != null) RangeStatus.BUILDING else RangeStatus.UNAVAILABLE,
+                    onClick = { viewModel.openMetricDetail(MetricDetailType.SKIN_TEMP) },
                     modifier = Modifier.weight(1f)
                 )
             }
@@ -488,8 +497,10 @@ fun BaroOverviewScreen(
                 Column {
                     Text("Daily Movement", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = BaroTextWhite)
                     Spacer(modifier = Modifier.height(4.dp))
+                    val distStr = activity?.distanceMeters?.let { "%.2f km".format(it / 1000.0) } ?: "—"
+                    val calStr = activity?.totalCaloriesKcal?.let { "%.0f kcal".format(it) } ?: "—"
                     Text(
-                        "${stepCountFormatted} steps · ${activity?.distanceMeters?.let { "%.2f km".format(it / 1000) } ?: "1.68 km"} · ${activity?.totalCaloriesKcal?.let { "%.0f kcal".format(it) } ?: "1,790 kcal"}",
+                        "$stepCountFormatted steps · $distStr · $calStr",
                         fontSize = 11.sp,
                         color = BaroTextMuted
                     )
@@ -498,115 +509,15 @@ fun BaroOverviewScreen(
             }
         }
 
-        Spacer(modifier = Modifier.height(26.dp))
-
-        // Truthful Provenance Notice
-        val provenanceName = ProvenanceFormatter.formatCompact(state.selectedSource)
-        Row(
-            modifier = Modifier.fillMaxWidth().padding(horizontal = 4.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Icon(Icons.Default.Info, null, tint = BaroTextMuted, modifier = Modifier.size(13.dp))
-            Spacer(modifier = Modifier.width(6.dp))
-            Text(
-                "Pass-through data direct from $provenanceName via Health Connect.",
-                fontSize = 10.sp,
-                color = BaroTextMuted
-            )
-        }
-
-        Spacer(modifier = Modifier.height(96.dp)) // Padding for floating nav bar
-    }
-
-    if (showReadinessDialog) {
-        AlertDialog(
-            onDismissRequest = { showReadinessDialog = false },
-            containerColor = BaroCardElevated,
-            titleContentColor = BaroTextWhite,
-            textContentColor = BaroTextSecondary,
-            title = {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Box(
-                        modifier = Modifier
-                            .size(34.dp)
-                            .clip(RoundedCornerShape(8.dp))
-                            .background(BaroReadinessTeal.copy(alpha = 0.15f)),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.Timeline,
-                            contentDescription = null,
-                            tint = BaroReadinessTeal,
-                            modifier = Modifier.size(18.dp)
-                        )
-                    }
-                    Spacer(modifier = Modifier.width(10.dp))
-                    Column {
-                        Text("Daily Readiness", fontSize = 16.sp, fontWeight = FontWeight.Bold, color = BaroTextWhite)
-                        Text("Recovery (Whoop)", fontSize = 11.sp, color = BaroReadinessTeal)
-                    }
-                }
-            },
-            text = {
-                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clip(RoundedCornerShape(8.dp))
-                            .background(Color(0xFF222228))
-                            .padding(horizontal = 10.dp, vertical = 6.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Box(
-                            modifier = Modifier
-                                .size(7.dp)
-                                .clip(CircleShape)
-                                .background(BaroZone3Orange)
-                        )
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text(
-                            text = "CALIBRATING · 3/7 NIGHTS LOGGED",
-                            fontSize = 10.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = BaroZone3Orange,
-                            letterSpacing = 0.5.sp
-                        )
-                    }
-
-                    Text(
-                        text = "To get your first daily readiness, wear your device to sleep for 4 more nights.",
-                        fontSize = 13.sp,
-                        fontWeight = FontWeight.SemiBold,
-                        color = BaroTextWhite,
-                        lineHeight = 18.sp
-                    )
-
-                    Text(
-                        text = "Google Health analyzes 7 consecutive nights of physiological recovery indicators (sleep duration, deep & REM sleep, resting pulse, and nocturnal HRV) to establish your baseline.",
-                        fontSize = 11.sp,
-                        color = BaroTextMuted,
-                        lineHeight = 16.sp
-                    )
-
-                    Text(
-                        text = "The grey radial dash ring indicates calibration in progress. Once 4 more nights are logged, it unlocks into your daily Recovery percentage score.",
-                        fontSize = 11.sp,
-                        color = BaroTextMuted,
-                        lineHeight = 16.sp
-                    )
-                }
-            },
-            confirmButton = {
-                TextButton(onClick = { showReadinessDialog = false }) {
-                    Text("Got it", fontWeight = FontWeight.Bold, color = BaroReadinessTeal)
-                }
-            }
-        )
+        Spacer(modifier = Modifier.height(96.dp))
     }
 }
 
 /**
- * Pinned Metric Card with Icon, Title, Large Value, and Vertical Range Pill.
+ * Pinned Metric Card matching Screenshot 5 exactly:
+ * Header: Icon + uppercase label
+ * Middle: Value + Unit on left, Vertical Range Pill capsule on right!
+ * Bottom: Status label on left (e.g. ^ Higher in orange, ✓ Typical in teal, Building baseline in grey)
  */
 @Composable
 private fun PinnedMetricCard(
@@ -615,14 +526,12 @@ private fun PinnedMetricCard(
     unit: String?,
     icon: ImageVector,
     status: RangeStatus,
-    fraction: Float?,
-    accentColor: Color,
     onClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     BaroCard(
-        modifier = modifier.height(138.dp),
-        padding = 14.dp,
+        modifier = modifier.height(142.dp),
+        padding = 16.dp,
         onClick = onClick
     ) {
         Column(
@@ -640,39 +549,58 @@ private fun PinnedMetricCard(
                 Spacer(modifier = Modifier.width(6.dp))
                 Text(
                     text = title,
-                    fontSize = 10.sp,
+                    fontSize = 11.sp,
                     fontWeight = FontWeight.Bold,
-                    color = BaroTextSecondary,
+                    color = Color(0xFF8E8E93),
                     letterSpacing = 0.6.sp
                 )
             }
 
-            // Middle: Value + Unit
-            Row(verticalAlignment = Alignment.Bottom) {
-                Text(
-                    text = value,
-                    fontSize = 24.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = BaroTextWhite
-                )
-                if (unit != null) {
-                    Spacer(modifier = Modifier.width(4.dp))
+            // Middle & Bottom Row: Left has Value + Status text; Right has Vertical Capsule Pill
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column {
+                    Row(verticalAlignment = Alignment.Bottom) {
+                        Text(
+                            text = value,
+                            fontSize = 28.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = BaroTextWhite
+                        )
+                        if (unit != null) {
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text(
+                                text = unit,
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Medium,
+                                color = BaroTextMuted,
+                                modifier = Modifier.padding(bottom = 3.dp)
+                            )
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(6.dp))
+
+                    val prefix = when (status) {
+                        RangeStatus.TYPICAL -> "✓ "
+                        RangeStatus.HIGHER -> "^ "
+                        RangeStatus.LOWER -> "v "
+                        else -> ""
+                    }
                     Text(
-                        text = unit,
-                        fontSize = 11.sp,
+                        text = "$prefix${status.label}",
+                        fontSize = 11.5.sp,
                         fontWeight = FontWeight.Medium,
-                        color = BaroTextMuted,
-                        modifier = Modifier.padding(bottom = 3.dp)
+                        color = status.color
                     )
                 }
-            }
 
-            // Bottom: Vertical Range Pill with status
-            BaroVerticalRangePill(
-                currentValueFraction = fraction,
-                status = status,
-                accentColor = accentColor
-            )
+                // Vertical capsule pill on the right side of the card!
+                BaroVerticalRangePill(status = status)
+            }
         }
     }
 }

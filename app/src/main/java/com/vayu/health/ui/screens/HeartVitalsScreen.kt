@@ -65,9 +65,9 @@ fun HeartVitalsScreen(
     val hrv = state.hrv
     val resp = state.respiratory
 
-    val minBpm = hr?.minBpm ?: 63L
-    val maxBpm = hr?.maxBpm ?: 151L
-    val restBpm = rhr?.beatsPerMinute ?: 76L
+    val minBpm = hr?.minBpm
+    val maxBpm = hr?.maxBpm
+    val restBpm = rhr?.beatsPerMinute
 
     var activeVital by remember { mutableStateOf(SelectedVitalTab.RESTING_HR) }
 
@@ -86,11 +86,21 @@ fun HeartVitalsScreen(
         ) {
             Row(
                 verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(4.dp)
+                horizontalArrangement = Arrangement.spacedBy(2.dp)
             ) {
-                Icon(Icons.Default.ChevronLeft, null, tint = BaroTextMuted, modifier = Modifier.size(20.dp))
+                androidx.compose.material3.IconButton(
+                    onClick = { viewModel.selectPreviousDay() },
+                    modifier = Modifier.size(32.dp)
+                ) {
+                    Icon(Icons.Default.ChevronLeft, "Previous Day", tint = BaroTextMuted, modifier = Modifier.size(20.dp))
+                }
                 Text(viewModel.getBaroHeaderDate(), fontSize = 17.sp, fontWeight = FontWeight.Bold, color = BaroTextWhite)
-                Icon(Icons.Default.ChevronRight, null, tint = BaroTextMuted, modifier = Modifier.size(20.dp))
+                androidx.compose.material3.IconButton(
+                    onClick = { viewModel.selectNextDay() },
+                    modifier = Modifier.size(32.dp)
+                ) {
+                    Icon(Icons.Default.ChevronRight, "Next Day", tint = BaroTextMuted, modifier = Modifier.size(20.dp))
+                }
             }
 
             val pillText = ProvenanceFormatter.formatCompact(state.selectedSource)
@@ -111,13 +121,15 @@ fun HeartVitalsScreen(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Text("HEART RATE", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = BaroTextSecondary, letterSpacing = 0.8.sp)
-                    Text("REST $restBpm BPM", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = BaroReadinessTeal)
+                    val restText = restBpm?.let { "REST $it BPM" } ?: "REST — BPM"
+                    Text(restText, fontSize = 11.sp, fontWeight = FontWeight.Bold, color = BaroReadinessTeal)
                 }
 
                 Spacer(modifier = Modifier.height(6.dp))
 
+                val hrRangeText = if (minBpm != null && maxBpm != null) "$minBpm–$maxBpm bpm" else hr?.latestBpm?.let { "$it bpm" } ?: "— bpm"
                 Text(
-                    text = "$minBpm–$maxBpm bpm",
+                    text = hrRangeText,
                     fontSize = 28.sp,
                     fontWeight = FontWeight.Bold,
                     color = BaroTextWhite
@@ -126,10 +138,11 @@ fun HeartVitalsScreen(
                 Spacer(modifier = Modifier.height(16.dp))
 
                 // Timeline with Zone Reference Lines
+                val hrSamples = hr?.samples?.map { it.beatsPerMinute } ?: emptyList()
                 HeartRateTimelineWithZones(
-                    samples = hr?.samples?.map { it.beatsPerMinute } ?: listOf(65L, 72L, 81L, 95L, 120L, 151L, 90L, 78L, 74L),
-                    minBpm = minBpm,
-                    maxBpm = maxBpm,
+                    samples = hrSamples,
+                    minBpm = minBpm ?: 60L,
+                    maxBpm = maxBpm ?: 140L,
                     height = 140.dp
                 )
 
@@ -149,19 +162,27 @@ fun HeartVitalsScreen(
 
         Spacer(modifier = Modifier.height(18.dp))
 
-        // Heart Rate Zones Breakdown Card
+        // Heart Rate Zones Breakdown Card (Calculated authentic distribution)
+        val zoneBreakdown = com.vayu.health.data.model.HealthDataCalculations.calculateHeartRateZones(hr?.samples ?: emptyList())
         BaroCard(modifier = Modifier.fillMaxWidth()) {
             Column {
                 Text("TIME IN ZONES", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = BaroTextSecondary, letterSpacing = 0.8.sp)
                 Spacer(modifier = Modifier.height(12.dp))
 
-                ZoneRow("Zone 4 · Peak (>150 bpm)", "5 min", 0.08f, BaroZone4Red)
+                val z4Text = if (zoneBreakdown.totalMinutes > 0) "${zoneBreakdown.zone4Minutes} min" else "—"
+                ZoneRow("Zone 4 · Peak (>150 bpm)", z4Text, zoneBreakdown.zone4Fraction, BaroZone4Red)
                 Spacer(modifier = Modifier.height(8.dp))
-                ZoneRow("Zone 3 · Cardio (125-150 bpm)", "16 min", 0.22f, BaroZone3Orange)
+
+                val z3Text = if (zoneBreakdown.totalMinutes > 0) "${zoneBreakdown.zone3Minutes} min" else "—"
+                ZoneRow("Zone 3 · Cardio (125-150 bpm)", z3Text, zoneBreakdown.zone3Fraction, BaroZone3Orange)
                 Spacer(modifier = Modifier.height(8.dp))
-                ZoneRow("Zone 2 · Fat Burn (95-125 bpm)", "42 min", 0.45f, BaroZone2Blue)
+
+                val z2Text = if (zoneBreakdown.totalMinutes > 0) "${zoneBreakdown.zone2Minutes} min" else "—"
+                ZoneRow("Zone 2 · Fat Burn (95-125 bpm)", z2Text, zoneBreakdown.zone2Fraction, BaroZone2Blue)
                 Spacer(modifier = Modifier.height(8.dp))
-                ZoneRow("Zone 1 · Below / Warm up (<95 bpm)", "6h 15m", 0.85f, BaroZone1Green)
+
+                val z1Text = if (zoneBreakdown.totalMinutes > 0) "${zoneBreakdown.zone1Minutes} min" else "—"
+                ZoneRow("Zone 1 · Below / Warm up (<95 bpm)", z1Text, zoneBreakdown.zone1Fraction, BaroZone1Green)
             }
         }
 
@@ -203,69 +224,35 @@ fun HeartVitalsScreen(
 
                 Spacer(modifier = Modifier.height(14.dp))
 
-                val mockTrendPoints = when (activeVital) {
-                    SelectedVitalTab.RESTING_HR -> listOf(
-                        TrendPoint("10 Oct", 73f),
-                        TrendPoint("11 Oct", 74f),
-                        TrendPoint("12 Oct", 75f),
-                        TrendPoint("13 Oct", 74f),
-                        TrendPoint("14 Oct", 78f),
-                        TrendPoint("15 Oct", 77f),
-                        TrendPoint("16 Oct", 76f)
-                    )
-                    SelectedVitalTab.HRV -> listOf(
-                        TrendPoint("10 Oct", 29f),
-                        TrendPoint("11 Oct", 30f),
-                        TrendPoint("12 Oct", 33f),
-                        TrendPoint("13 Oct", 32f),
-                        TrendPoint("14 Oct", 28f),
-                        TrendPoint("15 Oct", 30f),
-                        TrendPoint("16 Oct", 31f)
-                    )
-                    SelectedVitalTab.RESP_RATE -> listOf(
-                        TrendPoint("10 Oct", 16.2f),
-                        TrendPoint("11 Oct", 15.8f),
-                        TrendPoint("12 Oct", 16.0f),
-                        TrendPoint("13 Oct", 16.4f),
-                        TrendPoint("14 Oct", 15.9f),
-                        TrendPoint("15 Oct", 16.1f),
-                        TrendPoint("16 Oct", 16.0f)
-                    )
-                    SelectedVitalTab.SPO2 -> listOf(
-                        TrendPoint("10 Oct", 97f),
-                        TrendPoint("11 Oct", 96f),
-                        TrendPoint("12 Oct", 96f),
-                        TrendPoint("13 Oct", 95f),
-                        TrendPoint("14 Oct", 96f),
-                        TrendPoint("15 Oct", 97f),
-                        TrendPoint("16 Oct", 96f)
-                    )
-                    SelectedVitalTab.SKIN_TEMP -> listOf(
-                        TrendPoint("10 Oct", -0.2f),
-                        TrendPoint("11 Oct", 0.0f),
-                        TrendPoint("12 Oct", +0.1f),
-                        TrendPoint("13 Oct", -0.1f),
-                        TrendPoint("14 Oct", +0.3f),
-                        TrendPoint("15 Oct", 0.0f),
-                        TrendPoint("16 Oct", 0.0f)
-                    )
+                val currentVal: Float? = when (activeVital) {
+                    SelectedVitalTab.RESTING_HR -> rhr?.beatsPerMinute?.toFloat()
+                    SelectedVitalTab.HRV -> hrv?.rmssdMillis?.toFloat()
+                    SelectedVitalTab.RESP_RATE -> resp?.breathsPerMinute?.toFloat()
+                    SelectedVitalTab.SPO2 -> resp?.spo2Percentage?.toFloat()
+                    SelectedVitalTab.SKIN_TEMP -> resp?.skinTemperature?.averageDeltaCelsius?.toFloat()
+                }
+
+                val trendPoints = if (currentVal != null) {
+                    listOf(TrendPoint("Today", currentVal))
+                } else {
+                    emptyList()
                 }
 
                 BaroTrendChart(
-                    points = mockTrendPoints,
+                    points = trendPoints,
                     typicalMin = when (activeVital) {
-                        SelectedVitalTab.RESTING_HR -> 72f
-                        SelectedVitalTab.HRV -> 28f
-                        SelectedVitalTab.RESP_RATE -> 15.5f
-                        SelectedVitalTab.SPO2 -> 95f
-                        SelectedVitalTab.SKIN_TEMP -> -0.3f
+                        SelectedVitalTab.RESTING_HR -> 60f
+                        SelectedVitalTab.HRV -> 20f
+                        SelectedVitalTab.RESP_RATE -> 12f
+                        SelectedVitalTab.SPO2 -> 90f
+                        SelectedVitalTab.SKIN_TEMP -> -1.0f
                     },
                     typicalMax = when (activeVital) {
-                        SelectedVitalTab.RESTING_HR -> 77f
-                        SelectedVitalTab.HRV -> 35f
-                        SelectedVitalTab.RESP_RATE -> 16.5f
-                        SelectedVitalTab.SPO2 -> 99f
-                        SelectedVitalTab.SKIN_TEMP -> 0.4f
+                        SelectedVitalTab.RESTING_HR -> 100f
+                        SelectedVitalTab.HRV -> 80f
+                        SelectedVitalTab.RESP_RATE -> 20f
+                        SelectedVitalTab.SPO2 -> 100f
+                        SelectedVitalTab.SKIN_TEMP -> 1.0f
                     },
                     accentColor = trendAccent,
                     unit = when (activeVital) {
@@ -286,54 +273,51 @@ fun HeartVitalsScreen(
         Spacer(modifier = Modifier.height(10.dp))
 
         Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            val rhrVal = rhr?.beatsPerMinute
             MeasurementRow(
                 title = "Resting Heart Rate",
-                value = "${rhr?.beatsPerMinute ?: 76} bpm",
-                status = RangeStatus.HIGHER,
-                fraction = 0.72f,
+                value = rhrVal?.let { "$it bpm" } ?: "Data unavailable",
+                status = if (rhrVal != null) RangeStatus.TYPICAL else RangeStatus.UNAVAILABLE,
                 accent = BaroHeartCoral,
                 isSelected = activeVital == SelectedVitalTab.RESTING_HR,
                 onClick = { activeVital = SelectedVitalTab.RESTING_HR }
             )
 
+            val hrvVal = hrv?.rmssdMillis
             MeasurementRow(
                 title = "Heart Rate Variability (HRV)",
-                value = "${hrv?.let { "%.0f".format(it.rmssdMillis) } ?: "31"} ms",
-                status = RangeStatus.BUILDING,
-                fraction = null,
+                value = hrvVal?.let { "%.0f ms".format(it) } ?: "Data unavailable",
+                status = if (hrvVal != null) RangeStatus.BUILDING else RangeStatus.UNAVAILABLE,
                 accent = BaroReadinessTeal,
                 isSelected = activeVital == SelectedVitalTab.HRV,
                 onClick = { activeVital = SelectedVitalTab.HRV }
             )
 
-            val respVal = resp?.breathsPerMinute?.let { "%.1f".format(it) } ?: "16.0"
+            val respVal = resp?.breathsPerMinute
             MeasurementRow(
                 title = "Respiratory Rate",
-                value = "$respVal br/min",
-                status = RangeStatus.LOWER,
-                fraction = 0.28f,
+                value = respVal?.let { "%.1f br/min".format(it) } ?: "Data unavailable",
+                status = if (respVal != null) RangeStatus.TYPICAL else RangeStatus.UNAVAILABLE,
                 accent = BaroReadinessTeal,
                 isSelected = activeVital == SelectedVitalTab.RESP_RATE,
                 onClick = { activeVital = SelectedVitalTab.RESP_RATE }
             )
 
-            val spo2Val = resp?.spo2Percentage?.let { "%.0f".format(it) } ?: "96"
+            val spo2Val = resp?.spo2Percentage
             MeasurementRow(
                 title = "Oxygen Saturation (SpO2)",
-                value = "$spo2Val %",
-                status = RangeStatus.TYPICAL,
-                fraction = 0.50f,
+                value = spo2Val?.let { "%.0f %%".format(it) } ?: "Data unavailable",
+                status = if (spo2Val != null) RangeStatus.TYPICAL else RangeStatus.UNAVAILABLE,
                 accent = BaroStrainBlue,
                 isSelected = activeVital == SelectedVitalTab.SPO2,
                 onClick = { activeVital = SelectedVitalTab.SPO2 }
             )
 
-            val skinDelta = resp?.skinTemperature?.averageDeltaCelsius?.let { "%+.1f".format(it) } ?: "0.0"
+            val skinDelta = resp?.skinTemperature?.averageDeltaCelsius
             MeasurementRow(
                 title = "Skin Temperature Variation",
-                value = "$skinDelta °C",
-                status = RangeStatus.BUILDING,
-                fraction = null,
+                value = skinDelta?.let { "%+.1f °C".format(it) } ?: "Data unavailable",
+                status = if (skinDelta != null) RangeStatus.BUILDING else RangeStatus.UNAVAILABLE,
                 accent = SkinTempPurple,
                 isSelected = activeVital == SelectedVitalTab.SKIN_TEMP,
                 onClick = { activeVital = SelectedVitalTab.SKIN_TEMP }
@@ -461,7 +445,6 @@ private fun MeasurementRow(
     title: String,
     value: String,
     status: RangeStatus,
-    fraction: Float?,
     accent: Color,
     isSelected: Boolean,
     onClick: () -> Unit
@@ -481,9 +464,7 @@ private fun MeasurementRow(
                 Text(title, fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = BaroTextWhite)
                 Spacer(modifier = Modifier.height(4.dp))
                 BaroVerticalRangePill(
-                    currentValueFraction = fraction,
                     status = status,
-                    accentColor = accent,
                     pillHeight = 24.dp
                 )
             }
