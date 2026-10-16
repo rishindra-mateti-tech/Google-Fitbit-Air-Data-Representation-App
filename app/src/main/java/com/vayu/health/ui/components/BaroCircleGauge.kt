@@ -69,17 +69,32 @@ fun BaroCircleGauge(
                 val topLeft = Offset((this.size.width - diameter) / 2f, (this.size.height - diameter) / 2f)
 
                 if (progress == null) {
-                    // Calibrating / Baseline building mode: Dashed radial circle
-                    val dashPathEffect = PathEffect.dashPathEffect(floatArrayOf(12f, 10f), 0f)
-                    drawArc(
-                        color = accentColor.copy(alpha = 0.55f),
-                        startAngle = 0f,
-                        sweepAngle = 360f,
-                        useCenter = false,
-                        topLeft = topLeft,
-                        size = arcSize,
-                        style = Stroke(width = strokePx * 0.75f, pathEffect = dashPathEffect)
-                    )
+                    // Calibrating / Baseline building mode: Radial tick marks in dark grey
+                    val tickCount = 40
+                    val angleStep = 360f / tickCount
+                    val center = Offset(this.size.width / 2f, this.size.height / 2f)
+                    val radius = diameter / 2f
+                    val innerR = radius - 7.dp.toPx()
+                    val outerR = radius
+
+                    for (i in 0 until tickCount) {
+                        val angleRad = Math.toRadians((i * angleStep).toDouble())
+                        val tickStart = Offset(
+                            x = (center.x + innerR * cos(angleRad)).toFloat(),
+                            y = (center.y + innerR * sin(angleRad)).toFloat()
+                        )
+                        val tickEnd = Offset(
+                            x = (center.x + outerR * cos(angleRad)).toFloat(),
+                            y = (center.y + outerR * sin(angleRad)).toFloat()
+                        )
+                        drawLine(
+                            color = Color(0xFF2E2E36),
+                            start = tickStart,
+                            end = tickEnd,
+                            strokeWidth = 2.dp.toPx(),
+                            cap = StrokeCap.Round
+                        )
+                    }
                 } else {
                     // Normal 270-degree arc
                     val startAngle = 135f

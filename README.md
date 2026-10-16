@@ -148,7 +148,7 @@ Vayu is designed to isolate your Fitbit data from other apps that may write to H
 
 | File | Type | SHA-256 Checksum |
 | :--- | :--- | :--- |
-| **[`Vayu-Personal-Test.apk`](https://github.com/rishindra-mateti-tech/Google-Fitbit-Air-Data-Representation-App/releases/download/v1.0.0/Vayu-Personal-Test.apk)** | Sideloadable debug APK with authentic custom app icon for personal testing on Samsung Galaxy S25 Ultra | `7AE15F583495B405931217C92F3C5F3B5C501A862C75EA2B8BA3080DDB4E862F` |
+| **[`Vayu-Personal-Test.apk`](https://github.com/rishindra-mateti-tech/Google-Fitbit-Air-Data-Representation-App/releases/download/v1.0.4/Vayu-Personal-Test.apk)** | Sideloadable debug APK with authentic custom app icon for personal testing on Samsung Galaxy S25 Ultra | `1572B5CC5E6648020233A84622BEF8AF15ACDD22A5940594E565A5253CE8C5D8` |
 | **`Vayu-debug.apk`** | Debug Build | `D8C3FD78ADE8B58FA3835BDF34DDEF9E6C902B0C403282E977732A003E9C51CA` |
 | **`Vayu-release.apk`** | Production Release Build | `9FDAC1331A6E1D615892954BB98A06DA70FA87B745094848BBF22594B00815DC` |
 

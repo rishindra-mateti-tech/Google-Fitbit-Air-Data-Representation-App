@@ -16,10 +16,12 @@ import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Thermostat
 import androidx.compose.material.icons.filled.Timeline
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.Text
-import androidx.compose.runtime.Composable
+import androidx.compose.material3.TextButton
+import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -51,6 +53,7 @@ fun BaroOverviewScreen(
     modifier: Modifier = Modifier
 ) {
     val scrollState = rememberScrollState()
+    var showReadinessDialog by remember { mutableStateOf(false) }
 
     val sleep = state.sleep
     val hr = state.heartRate
@@ -186,12 +189,13 @@ fun BaroOverviewScreen(
 
             // READINESS GAUGE (Recovery in Whoop)
             Column(
-                horizontalAlignment = Alignment.CenterHorizontally
+                horizontalAlignment = Alignment.CenterHorizontally,
+                modifier = Modifier.clickable { showReadinessDialog = true }
             ) {
                 BaroCircleGauge(
                     label = "READINESS",
                     valueText = "—",
-                    progress = null, // Dotted radial circle
+                    progress = null, // Radial grey dashes (calibrating)
                     accentColor = BaroReadinessTeal,
                     size = 96.dp
                 )
@@ -201,6 +205,13 @@ fun BaroOverviewScreen(
                     fontSize = 9.sp,
                     color = BaroTextMuted,
                     fontWeight = FontWeight.Medium
+                )
+                Spacer(modifier = Modifier.height(2.dp))
+                Text(
+                    text = "Wear 4 more nights",
+                    fontSize = 8.5.sp,
+                    color = Color(0xFF707078),
+                    fontWeight = FontWeight.Normal
                 )
             }
 
@@ -505,6 +516,92 @@ fun BaroOverviewScreen(
         }
 
         Spacer(modifier = Modifier.height(96.dp)) // Padding for floating nav bar
+    }
+
+    if (showReadinessDialog) {
+        AlertDialog(
+            onDismissRequest = { showReadinessDialog = false },
+            containerColor = BaroCardElevated,
+            titleContentColor = BaroTextWhite,
+            textContentColor = BaroTextSecondary,
+            title = {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Box(
+                        modifier = Modifier
+                            .size(34.dp)
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(BaroReadinessTeal.copy(alpha = 0.15f)),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Timeline,
+                            contentDescription = null,
+                            tint = BaroReadinessTeal,
+                            modifier = Modifier.size(18.dp)
+                        )
+                    }
+                    Spacer(modifier = Modifier.width(10.dp))
+                    Column {
+                        Text("Daily Readiness", fontSize = 16.sp, fontWeight = FontWeight.Bold, color = BaroTextWhite)
+                        Text("Recovery (Whoop)", fontSize = 11.sp, color = BaroReadinessTeal)
+                    }
+                }
+            },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(Color(0xFF222228))
+                            .padding(horizontal = 10.dp, vertical = 6.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(7.dp)
+                                .clip(CircleShape)
+                                .background(BaroZone3Orange)
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                            text = "CALIBRATING · 3/7 NIGHTS LOGGED",
+                            fontSize = 10.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = BaroZone3Orange,
+                            letterSpacing = 0.5.sp
+                        )
+                    }
+
+                    Text(
+                        text = "To get your first daily readiness, wear your device to sleep for 4 more nights.",
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        color = BaroTextWhite,
+                        lineHeight = 18.sp
+                    )
+
+                    Text(
+                        text = "Google Health analyzes 7 consecutive nights of physiological recovery indicators (sleep duration, deep & REM sleep, resting pulse, and nocturnal HRV) to establish your baseline.",
+                        fontSize = 11.sp,
+                        color = BaroTextMuted,
+                        lineHeight = 16.sp
+                    )
+
+                    Text(
+                        text = "The grey radial dash ring indicates calibration in progress. Once 4 more nights are logged, it unlocks into your daily Recovery percentage score.",
+                        fontSize = 11.sp,
+                        color = BaroTextMuted,
+                        lineHeight = 16.sp
+                    )
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { showReadinessDialog = false }) {
+                    Text("Got it", fontWeight = FontWeight.Bold, color = BaroReadinessTeal)
+                }
+            }
+        )
     }
 }
 
