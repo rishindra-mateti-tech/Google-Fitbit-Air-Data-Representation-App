@@ -33,6 +33,7 @@ import com.vayu.health.data.HealthConnectManager
 import com.vayu.health.data.HealthMetricsRepository
 import com.vayu.health.data.HealthSourcePreferences
 import com.vayu.health.data.model.HealthConnectStatus
+import com.vayu.health.ui.components.BaroFloatingNavBar
 import com.vayu.health.ui.components.GlassCard
 import com.vayu.health.ui.components.GlassTabBar
 import com.vayu.health.ui.components.VayuTab
@@ -77,7 +78,7 @@ class MainActivity : ComponentActivity() {
 
                 Surface(
                     modifier = Modifier.fillMaxSize(),
-                    color = SpaceBlack
+                    color = BaroBlack
                 ) {
                     Box(modifier = Modifier.fillMaxSize()) {
                         // Ambient radial air glow
@@ -250,8 +251,8 @@ class MainActivity : ComponentActivity() {
                                 }
                             }
 
-                            // Floating Glass Bottom Navigation
-                            GlassTabBar(
+                            // Floating Baro Bottom Navigation
+                            BaroFloatingNavBar(
                                 selectedTab = selectedTab,
                                 onTabSelected = { selectedTab = it },
                                 modifier = Modifier

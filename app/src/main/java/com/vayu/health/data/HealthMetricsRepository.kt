@@ -23,7 +23,7 @@ class HealthDateRangeCalculator(
     fun calculateWindows(): DateWindows {
         val now = clock()
         val zone = zoneId()
-        val startOfToday = LocalDate.now(zone).atStartOfDay(zone).toInstant()
+        val startOfToday = now.atZone(zone).toLocalDate().atStartOfDay(zone).toInstant()
         val sleepWindowStart = now.minus(24, ChronoUnit.HOURS)
         val sleepHistoryStart = now.minus(7, ChronoUnit.DAYS)
         return DateWindows(

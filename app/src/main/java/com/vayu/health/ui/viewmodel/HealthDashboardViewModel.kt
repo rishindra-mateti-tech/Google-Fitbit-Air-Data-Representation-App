@@ -64,6 +64,12 @@ class HealthDashboardViewModel(
         return formatter.format(Instant.now()).uppercase()
     }
 
+    fun getBaroHeaderDate(): String {
+        val formatter = DateTimeFormatter.ofPattern("d MMM")
+            .withZone(ZoneId.systemDefault())
+        return "Today, ${formatter.format(Instant.now())}"
+    }
+
     fun formatTime(instant: Instant?): String {
         if (instant == null) return "Time unavailable"
         val formatter = DateTimeFormatter.ofPattern("h:mm a")

@@ -71,19 +71,26 @@ Vayu is engineered from the ground up to respect your biometric privacy:
 
 ---
 
-## 💎 Design System: Liquid Glass on Obsidian
+## 💎 Design System: Baro-Exact Visual Architecture on Obsidian
 
-Engineered for Samsung's Dynamic AMOLED 2X displays:
-* **Backgrounds**: Deep space obsidian (`#06080D` / `#0A0E17`) with frosted liquid-glass card surfaces (`Color(0x1AFFFFFF)`).
-* **Vitals Color Palette**:
-  * 🩵 **Vayu Cyan** (`#00F2FE`) — Signature theme, steps, and SpO₂
-  * 💜 **Sleep Lavender & Indigo** (`#3D5AFE` / `#7C4DFF`) — Deep, REM, Light, and Awake sleep stages
-  * ❤️ **Cardiovascular Crimson** (`#FF3366`) — Resting Heart Rate & pulse sample waves
-  * 💚 **HRV Emerald** (`#00E676`) — RMSSD Heart Rate Variability
-  * 🧡 **Metabolic Amber** (`#FF9100`) — Total and active energy expenditure
-  * 🌊 **Respiration Teal** (`#00E5FF`) — Nocturnal breathing rate & skin temperature deviation
-* **Responsive Layouts**: Designed to eliminate text wrapping or squeezed cards on 1080p–1440p displays. Compact single-line provenance pills (`Fitbit`, `Samsung`, `Google Fit`) prevent vertical badge wrapping.
-* **Customizable Dashboard**: Top-right **Edit** toggle allows long-press and smooth drag-and-drop card reordering, automatically persisted locally via `SharedPreferences`.
+Engineered for Samsung's Dynamic AMOLED 2X displays (Samsung Galaxy S25 Ultra):
+* **Backgrounds**: Deep OLED obsidian (`#000000`) with elevated card surfaces (`#121214` to `#18181C`) and crisp borders (`#242428`).
+* **Hero Tri-Arc Gauges**:
+  * 🔵 **Sleep Quality Gauge**: 270-degree arc opening at bottom (`#5B9BD5`) displaying sleep score and restorative status.
+  * 🟢 **Readiness (Recovery)**: Radial dashed baseline circle (`#00D4AA`) with Whoop recovery equivalence subtext.
+  * 🩵 **Strain Gauge**: 270-degree arc (`#4DA6FF`) with custom white indicator needle tick mark.
+* **2x2 Core Metric Grid**:
+  * **Heart Rate**: Live BPM with smooth cubic Bézier red ECG sparkline curve (`#FF5252`) and resting pulse footnote.
+  * **Steps**: Step total with 24-hour hourly distribution mini-bars (`#4DA6FF`) and 7-day average footnote.
+  * **Zone Minutes**: Active cardio minutes with 7-day weekly bars (S S M T W T F) and active status dot (`#00D4AA`).
+  * **Stress**: Speedometer with 21 radial tick marks across a 180-degree arc and indicator needle (`#00D4AA` -> `#FFA726` -> `#FF5252`).
+* **Pinned 2-Column Metrics**:
+  * Resting Heart Rate, HRV, Respiratory Rate, SpO₂, Respiration Temp, and Skin Temperature variation.
+  * Each card features a custom **Vertical Baseline Range Pill** showing the user's 30-night typical range band and today's reading status (`✓ Typical`, `^ Higher`, `v Lower`, or `Building baseline`).
+* **Detail Architecture**:
+  * **Sleep**: 4-lane Hypnogram swim-lane timeline (Awake, REM, Light, Deep), proportional breakdown bar, and overnight HR curve.
+  * **Vitals**: 63–151 bpm hero range, Zone dashed reference lines (Zone 4 Red, Zone 2 Blue, RHR Teal), and interactive trend views with W | M | 6M picker.
+  * **Navigation**: Floating capsule bottom bar (`BaroFloatingNavBar`) elevated with rounded 32.dp pill container and cyan glow indicator.
 
 ---
 
@@ -141,7 +148,7 @@ Vayu is designed to isolate your Fitbit data from other apps that may write to H
 
 | File | Type | SHA-256 Checksum |
 | :--- | :--- | :--- |
-| **[`Vayu-Personal-Test.apk`](https://github.com/rishindra-mateti-tech/Google-Fitbit-Air-Data-Representation-App/releases/download/v1.0.0/Vayu-Personal-Test.apk)** | Sideloadable debug APK with authentic custom app icon for personal testing on Samsung Galaxy S25 Ultra | `167388D5536FC6BBFBFD3AA6E42300FDD87BEAC0DEB6FF8A8484FA7DC0299612` |
+| **[`Vayu-Personal-Test.apk`](https://github.com/rishindra-mateti-tech/Google-Fitbit-Air-Data-Representation-App/releases/download/v1.0.0/Vayu-Personal-Test.apk)** | Sideloadable debug APK with authentic custom app icon for personal testing on Samsung Galaxy S25 Ultra | `7AE15F583495B405931217C92F3C5F3B5C501A862C75EA2B8BA3080DDB4E862F` |
 | **`Vayu-debug.apk`** | Debug Build | `D8C3FD78ADE8B58FA3835BDF34DDEF9E6C902B0C403282E977732A003E9C51CA` |
 | **`Vayu-release.apk`** | Production Release Build | `9FDAC1331A6E1D615892954BB98A06DA70FA87B745094848BBF22594B00815DC` |
 
