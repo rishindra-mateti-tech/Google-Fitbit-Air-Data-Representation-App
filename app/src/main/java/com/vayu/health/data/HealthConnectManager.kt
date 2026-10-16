@@ -476,6 +476,33 @@ open class HealthConnectManager(private val context: Context? = null) {
                 response.dataOrigins.map { it.packageName }.toSet()
             }
 
+            var hourlyStepsList: List<Float> = emptyList()
+            if (HealthPermission.getReadPermission(StepsRecord::class) in granted) {
+                try {
+                    val stepsResponse = client.readRecords(
+                        ReadRecordsRequest(
+                            recordType = StepsRecord::class,
+                            timeRangeFilter = TimeRangeFilter.between(start, end),
+                            dataOriginFilter = dataOriginFilter
+                        )
+                    )
+                    val filteredSteps = stepsResponse.records.filter {
+                        sourceFilter == null || it.metadata.dataOrigin.packageName == sourceFilter
+                    }
+                    val hourly = FloatArray(24) { 0f }
+                    val zoneId = ZoneId.systemDefault()
+                    filteredSteps.forEach { stepRecord ->
+                        val hour = stepRecord.startTime.atZone(zoneId).hour
+                        if (hour in 0..23) {
+                            hourly[hour] += stepRecord.count.toFloat()
+                        }
+                    }
+                    hourlyStepsList = hourly.toList()
+                } catch (e: Exception) {
+                    Log.w(tag, "Failed to read granular StepsRecords for hourly distribution", e)
+                }
+            }
+
             if (steps == null && distance == null && activeCal == null && totalCal == null) {
                 null
             } else {
@@ -485,7 +512,8 @@ open class HealthConnectManager(private val context: Context? = null) {
                     totalCaloriesKcal = totalCal,
                     distanceMeters = distance,
                     sources = contributingSources,
-                    lastUpdated = end
+                    lastUpdated = end,
+                    hourlySteps = hourlyStepsList
                 )
             }
         } catch (e: Exception) {

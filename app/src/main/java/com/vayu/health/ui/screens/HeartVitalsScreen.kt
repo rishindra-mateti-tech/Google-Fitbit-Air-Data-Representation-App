@@ -163,26 +163,37 @@ fun HeartVitalsScreen(
         Spacer(modifier = Modifier.height(18.dp))
 
         // Heart Rate Zones Breakdown Card (Calculated authentic distribution)
-        val zoneBreakdown = com.vayu.health.data.model.HealthDataCalculations.calculateHeartRateZones(hr?.samples ?: emptyList())
+        val zoneBreakdown = com.vayu.health.data.model.HealthDataCalculations.calculateHeartRateZones(
+            samples = hr?.samples ?: emptyList(),
+            restingHr = state.restingHeartRate?.beatsPerMinute?.toInt()
+        )
         BaroCard(modifier = Modifier.fillMaxWidth()) {
             Column {
-                Text("TIME IN ZONES", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = BaroTextSecondary, letterSpacing = 0.8.sp)
+                Text("TIME IN ZONES*", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = BaroTextSecondary, letterSpacing = 0.8.sp)
                 Spacer(modifier = Modifier.height(12.dp))
 
                 val z4Text = if (zoneBreakdown.totalMinutes > 0) "${zoneBreakdown.zone4Minutes} min" else "—"
-                ZoneRow("Zone 4 · Peak (>150 bpm)", z4Text, zoneBreakdown.zone4Fraction, BaroZone4Red)
+                ZoneRow("Zone 4 · Peak (${zoneBreakdown.zone4Label})", z4Text, zoneBreakdown.zone4Fraction, BaroZone4Red)
                 Spacer(modifier = Modifier.height(8.dp))
 
                 val z3Text = if (zoneBreakdown.totalMinutes > 0) "${zoneBreakdown.zone3Minutes} min" else "—"
-                ZoneRow("Zone 3 · Cardio (125-150 bpm)", z3Text, zoneBreakdown.zone3Fraction, BaroZone3Orange)
+                ZoneRow("Zone 3 · Cardio (${zoneBreakdown.zone3Label})", z3Text, zoneBreakdown.zone3Fraction, BaroZone3Orange)
                 Spacer(modifier = Modifier.height(8.dp))
 
                 val z2Text = if (zoneBreakdown.totalMinutes > 0) "${zoneBreakdown.zone2Minutes} min" else "—"
-                ZoneRow("Zone 2 · Fat Burn (95-125 bpm)", z2Text, zoneBreakdown.zone2Fraction, BaroZone2Blue)
+                ZoneRow("Zone 2 · Fat Burn (${zoneBreakdown.zone2Label})", z2Text, zoneBreakdown.zone2Fraction, BaroZone2Blue)
                 Spacer(modifier = Modifier.height(8.dp))
 
                 val z1Text = if (zoneBreakdown.totalMinutes > 0) "${zoneBreakdown.zone1Minutes} min" else "—"
-                ZoneRow("Zone 1 · Below / Warm up (<95 bpm)", z1Text, zoneBreakdown.zone1Fraction, BaroZone1Green)
+                ZoneRow("Zone 1 · Below / Warm up (${zoneBreakdown.zone1Label})", z1Text, zoneBreakdown.zone1Fraction, BaroZone1Green)
+                Spacer(modifier = Modifier.height(10.dp))
+
+                Text(
+                    "* Calculated from timestamped sample intervals and individualized Heart Rate Reserve.",
+                    fontSize = 11.sp,
+                    color = BaroTextMuted,
+                    lineHeight = 15.sp
+                )
             }
         }
 

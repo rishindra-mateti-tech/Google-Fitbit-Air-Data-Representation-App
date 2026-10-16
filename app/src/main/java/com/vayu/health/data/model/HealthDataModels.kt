@@ -87,7 +87,8 @@ data class ActivityMetric(
     val totalCaloriesKcal: Double?,
     val distanceMeters: Double?,
     val sources: Set<String>,
-    val lastUpdated: Instant?
+    val lastUpdated: Instant?,
+    val hourlySteps: List<Float> = emptyList()
 )
 
 data class SkinTemperatureMetric(
@@ -288,44 +289,101 @@ object HealthDataCalculations {
         val zone4Fraction: Float,
         val zone3Fraction: Float,
         val zone2Fraction: Float,
-        val zone1Fraction: Float
+        val zone1Fraction: Float,
+        val activeZoneMinutes: Long = zone2Minutes + (zone3Minutes * 2) + (zone4Minutes * 2),
+        val zone1Label: String = "<95 bpm",
+        val zone2Label: String = "95-125 bpm",
+        val zone3Label: String = "125-150 bpm",
+        val zone4Label: String = ">150 bpm"
     )
 
     /**
-     * Calculates time in heart rate zones strictly from authentic Health Connect sample points.
-     * Zone 4: Peak (> 150 bpm)
-     * Zone 3: Cardio (125..150 bpm)
-     * Zone 2: Fat Burn (95..124 bpm)
-     * Zone 1: Below / Warm up (< 95 bpm)
+     * Calculates time in heart rate zones from timestamped Health Connect sample points.
+     * Uses individualized Heart Rate Reserve (Karvonen method) when resting HR is available,
+     * or standard physiological bands as fallback.
+     * Durations are calculated from sample timestamps (Duration.between), not sample counts.
      */
-    fun calculateHeartRateZones(samples: List<HeartRateSamplePoint>): HeartRateZoneBreakdown {
+    fun calculateHeartRateZones(
+        samples: List<HeartRateSamplePoint>,
+        restingHr: Int? = null,
+        maxHr: Int = 190
+    ): HeartRateZoneBreakdown {
         if (samples.isEmpty()) {
-            return HeartRateZoneBreakdown(0L, 0L, 0L, 0L, 0L, 0f, 0f, 0f, 0f)
+            return HeartRateZoneBreakdown(0L, 0L, 0L, 0L, 0L, 0f, 0f, 0f, 0f, 0L)
         }
-        var z4 = 0L
-        var z3 = 0L
-        var z2 = 0L
-        var z1 = 0L
 
-        samples.forEach { sample ->
+        val (z1Upper, z2Upper, z3Upper, labels) = if (restingHr != null && restingHr in 31 until maxHr) {
+            val hrr = maxHr - restingHr
+            val z1 = restingHr + (0.50f * hrr).toInt()
+            val z2 = restingHr + (0.70f * hrr).toInt()
+            val z3 = restingHr + (0.85f * hrr).toInt()
+            listOf(
+                z1, z2, z3,
+                listOf("<$z1 bpm", "$z1-$z2 bpm", "$z2-$z3 bpm", ">$z3 bpm")
+            )
+        } else {
+            listOf(
+                95, 125, 150,
+                listOf("<95 bpm", "95-125 bpm", "125-150 bpm", ">150 bpm")
+            )
+        }
+
+        @Suppress("UNCHECKED_CAST")
+        val z1Threshold = z1Upper as Int
+        @Suppress("UNCHECKED_CAST")
+        val z2Threshold = z2Upper as Int
+        @Suppress("UNCHECKED_CAST")
+        val z3Threshold = z3Upper as Int
+        @Suppress("UNCHECKED_CAST")
+        val zLabels = labels as List<String>
+
+        val sorted = samples.sortedBy { it.time }
+        var z4Secs = 0L
+        var z3Secs = 0L
+        var z2Secs = 0L
+        var z1Secs = 0L
+
+        for (i in sorted.indices) {
+            val sample = sorted[i]
+            val durationSecs = if (i < sorted.size - 1) {
+                val delta = java.time.Duration.between(sample.time, sorted[i + 1].time).seconds
+                if (delta in 1..300) delta else 60L
+            } else {
+                60L
+            }
+
             when {
-                sample.beatsPerMinute > 150 -> z4++
-                sample.beatsPerMinute >= 125 -> z3++
-                sample.beatsPerMinute >= 95 -> z2++
-                else -> z1++
+                sample.beatsPerMinute > z3Threshold -> z4Secs += durationSecs
+                sample.beatsPerMinute >= z2Threshold -> z3Secs += durationSecs
+                sample.beatsPerMinute >= z1Threshold -> z2Secs += durationSecs
+                else -> z1Secs += durationSecs
             }
         }
-        val total = (z4 + z3 + z2 + z1).coerceAtLeast(1L)
+
+        val z4Min = (z4Secs + 30L) / 60L
+        val z3Min = (z3Secs + 30L) / 60L
+        val z2Min = (z2Secs + 30L) / 60L
+        val z1Min = (z1Secs + 30L) / 60L
+        val totalSecs = (z4Secs + z3Secs + z2Secs + z1Secs).coerceAtLeast(1L)
+        val totalMin = (totalSecs + 30L) / 60L
+
+        val azm = z2Min + (z3Min * 2) + (z4Min * 2)
+
         return HeartRateZoneBreakdown(
-            zone4Minutes = z4,
-            zone3Minutes = z3,
-            zone2Minutes = z2,
-            zone1Minutes = z1,
-            totalMinutes = z4 + z3 + z2 + z1,
-            zone4Fraction = (z4.toFloat() / total).coerceIn(0f, 1f),
-            zone3Fraction = (z3.toFloat() / total).coerceIn(0f, 1f),
-            zone2Fraction = (z2.toFloat() / total).coerceIn(0f, 1f),
-            zone1Fraction = (z1.toFloat() / total).coerceIn(0f, 1f)
+            zone4Minutes = z4Min,
+            zone3Minutes = z3Min,
+            zone2Minutes = z2Min,
+            zone1Minutes = z1Min,
+            totalMinutes = totalMin,
+            zone4Fraction = (z4Secs.toFloat() / totalSecs).coerceIn(0f, 1f),
+            zone3Fraction = (z3Secs.toFloat() / totalSecs).coerceIn(0f, 1f),
+            zone2Fraction = (z2Secs.toFloat() / totalSecs).coerceIn(0f, 1f),
+            zone1Fraction = (z1Secs.toFloat() / totalSecs).coerceIn(0f, 1f),
+            activeZoneMinutes = azm,
+            zone1Label = zLabels[0],
+            zone2Label = zLabels[1],
+            zone3Label = zLabels[2],
+            zone4Label = zLabels[3]
         )
     }
 
@@ -349,19 +407,27 @@ object HealthDataCalculations {
     }
 
     /**
-     * Distributes steps into 24-hour buckets based on actual Health Connect aggregate.
+     * Aggregates timestamped step points into 24 one-hour bins.
+     * Returns authentic movement hours without synthetic patterns.
      */
-    fun calculateHourlyStepDistribution(totalSteps: Long?): List<Float> {
-        if (totalSteps == null || totalSteps <= 0) return List(24) { 0f }
-        val base = List(24) { 0f }.toMutableList()
-        val pattern = listOf(0.02f, 0.05f, 0.12f, 0.18f, 0.14f, 0.10f, 0.15f, 0.12f, 0.08f, 0.04f)
-        for (i in pattern.indices) {
-            val hour = 7 + i
-            if (hour < 24) {
-                base[hour] = (totalSteps * pattern[i]).toFloat()
+    fun calculateHourlyStepDistribution(
+        stepRecords: List<Pair<Instant, Long>>,
+        zoneId: java.time.ZoneId = java.time.ZoneId.systemDefault()
+    ): List<Float> {
+        if (stepRecords.isEmpty()) return List(24) { 0f }
+        val hourly = FloatArray(24) { 0f }
+        stepRecords.forEach { (time, count) ->
+            val hour = time.atZone(zoneId).hour
+            if (hour in 0..23) {
+                hourly[hour] += count.toFloat()
             }
         }
-        return base
+        return hourly.toList()
+    }
+
+    @Deprecated("Do not use synthetic step allocation. Use Health Connect StepsRecord.")
+    fun calculateHourlyStepDistribution(totalSteps: Long?): List<Float> {
+        return List(24) { 0f }
     }
 
     data class StressSummary(
@@ -372,9 +438,10 @@ object HealthDataCalculations {
     )
 
     /**
-     * Gold Standard Firstbeat / ESC-NASPE Autonomic Nervous System (ANS) Physiological Stress Model.
-     * Evaluates resting sympathetic/parasympathetic balance from baseline Resting Heart Rate,
-     * baseline nocturnal HRV (RMSSD), and daytime pulse samples when at rest (excluding active movement).
+     * Experimental Autonomic Stress Indicator.
+     * Evaluates daytime pulse elevation relative to baseline resting heart rate,
+     * modulated by nocturnal HRV (RMSSD) suppression.
+     * Note: This is an empirical personal ratio indicator, not a clinical ECG/RR-interval diagnostic.
      * Scale: 0.0 to 4.0 (0.0–1.0 Calm, 1.0–2.0 Low, 2.0–2.5 Medium, 2.5–4.0 High).
      */
     fun calculatePhysiologicalStress(

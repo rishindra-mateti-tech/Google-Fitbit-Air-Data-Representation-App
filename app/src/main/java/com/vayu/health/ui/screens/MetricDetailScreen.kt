@@ -281,22 +281,32 @@ private fun HeartRateDetailContent(state: HealthDashboardState) {
         }
 
         // Time in Zones
-        val zoneBreakdown = com.vayu.health.data.model.HealthDataCalculations.calculateHeartRateZones(hr?.samples ?: emptyList())
+        val zoneBreakdown = com.vayu.health.data.model.HealthDataCalculations.calculateHeartRateZones(
+            samples = hr?.samples ?: emptyList(),
+            restingHr = state.restingHeartRate?.beatsPerMinute?.toInt()
+        )
         BaroCard(modifier = Modifier.fillMaxWidth()) {
             Column {
-                Text("TIME IN ZONES", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = BaroTextSecondary, letterSpacing = 0.8.sp)
+                Text("TIME IN ZONES*", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = BaroTextSecondary, letterSpacing = 0.8.sp)
                 Spacer(modifier = Modifier.height(12.dp))
                 val z4Text = if (zoneBreakdown.totalMinutes > 0) "${zoneBreakdown.zone4Minutes} min" else "—"
-                ZoneBar("Zone 4 · Peak (>150 bpm)", z4Text, zoneBreakdown.zone4Fraction, BaroZone4Red)
+                ZoneBar("Zone 4 · Peak (${zoneBreakdown.zone4Label})", z4Text, zoneBreakdown.zone4Fraction, BaroZone4Red)
                 Spacer(modifier = Modifier.height(8.dp))
                 val z3Text = if (zoneBreakdown.totalMinutes > 0) "${zoneBreakdown.zone3Minutes} min" else "—"
-                ZoneBar("Zone 3 · Cardio (125-150 bpm)", z3Text, zoneBreakdown.zone3Fraction, BaroZone3Orange)
+                ZoneBar("Zone 3 · Cardio (${zoneBreakdown.zone3Label})", z3Text, zoneBreakdown.zone3Fraction, BaroZone3Orange)
                 Spacer(modifier = Modifier.height(8.dp))
                 val z2Text = if (zoneBreakdown.totalMinutes > 0) "${zoneBreakdown.zone2Minutes} min" else "—"
-                ZoneBar("Zone 2 · Fat Burn (95-125 bpm)", z2Text, zoneBreakdown.zone2Fraction, BaroZone2Blue)
+                ZoneBar("Zone 2 · Fat Burn (${zoneBreakdown.zone2Label})", z2Text, zoneBreakdown.zone2Fraction, BaroZone2Blue)
                 Spacer(modifier = Modifier.height(8.dp))
                 val z1Text = if (zoneBreakdown.totalMinutes > 0) "${zoneBreakdown.zone1Minutes} min" else "—"
-                ZoneBar("Zone 1 · Below / Warm up (<95 bpm)", z1Text, zoneBreakdown.zone1Fraction, BaroZone1Green)
+                ZoneBar("Zone 1 · Below / Warm up (${zoneBreakdown.zone1Label})", z1Text, zoneBreakdown.zone1Fraction, BaroZone1Green)
+                Spacer(modifier = Modifier.height(12.dp))
+                Text(
+                    "* Calculated from timestamped sample intervals and individualized Heart Rate Reserve (Karvonen method).",
+                    fontSize = 11.sp,
+                    color = BaroTextMuted,
+                    lineHeight = 15.sp
+                )
             }
         }
     }
@@ -432,18 +442,42 @@ private fun SkinTempDetailContent(state: HealthDashboardState) {
 
 @Composable
 private fun ZoneMinutesDetailContent(state: HealthDashboardState) {
-    val act = state.activity
-    val cal = act?.activeCaloriesKcal
-    val zoneMin = cal?.let { (it / 10.0).toInt().coerceIn(0, 180) }
+    val hr = state.heartRate
+    val rhr = state.restingHeartRate
+    val zoneBreakdown = com.vayu.health.data.model.HealthDataCalculations.calculateHeartRateZones(
+        samples = hr?.samples ?: emptyList(),
+        restingHr = rhr?.beatsPerMinute?.toInt()
+    )
+    val hasData = !hr?.samples.isNullOrEmpty()
+    val zoneMin = if (hasData) zoneBreakdown.activeZoneMinutes.toInt() else null
+
     Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
         BaroCard(modifier = Modifier.fillMaxWidth(), padding = 18.dp) {
             Column {
-                Text("ZONE MINUTES", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = BaroTextSecondary, letterSpacing = 0.8.sp)
+                Text("ZONE MINUTES*", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = BaroTextSecondary, letterSpacing = 0.8.sp)
                 Spacer(modifier = Modifier.height(8.dp))
                 Text(zoneMin?.let { "$it min" } ?: "—", fontSize = 32.sp, fontWeight = FontWeight.Bold, color = BaroTextWhite)
                 Spacer(modifier = Modifier.height(6.dp))
-                val subtitle = if (zoneMin != null) "Calculated from active energy expenditure" else "Data unavailable"
-                Text(subtitle, fontSize = 12.sp, color = BaroTextMuted)
+                val subtitle = if (zoneMin != null) {
+                    "* Active duration across Fat Burn (1x), Cardio (2x), and Peak (2x) zones based on individualized Heart Rate Reserve."
+                } else {
+                    "Data unavailable (no continuous pulse samples)"
+                }
+                Text(subtitle, fontSize = 12.sp, color = BaroTextMuted, lineHeight = 16.sp)
+            }
+        }
+
+        if (hasData) {
+            BaroCard(modifier = Modifier.fillMaxWidth(), padding = 18.dp) {
+                Column {
+                    Text("ZONE BREAKDOWN*", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = BaroTextSecondary, letterSpacing = 0.8.sp)
+                    Spacer(modifier = Modifier.height(12.dp))
+                    ZoneBar("Zone 4 · Peak (${zoneBreakdown.zone4Label})", "${zoneBreakdown.zone4Minutes} min", zoneBreakdown.zone4Fraction, BaroZone4Red)
+                    Spacer(modifier = Modifier.height(8.dp))
+                    ZoneBar("Zone 3 · Cardio (${zoneBreakdown.zone3Label})", "${zoneBreakdown.zone3Minutes} min", zoneBreakdown.zone3Fraction, BaroZone3Orange)
+                    Spacer(modifier = Modifier.height(8.dp))
+                    ZoneBar("Zone 2 · Fat Burn (${zoneBreakdown.zone2Label})", "${zoneBreakdown.zone2Minutes} min", zoneBreakdown.zone2Fraction, BaroZone2Blue)
+                }
             }
         }
     }
@@ -472,7 +506,7 @@ private fun StressDetailContent(state: HealthDashboardState) {
                     Spacer(modifier = Modifier.height(6.dp))
                 }
                 Text(
-                    "* Calculated using the gold-standard Firstbeat Autonomic Nervous System (ANS) model from resting pulse and nocturnal HRV.",
+                    "* Experimental personal indicator estimating autonomic balance from resting heart rate elevation and nocturnal HRV (RMSSD) suppression.",
                     fontSize = 11.sp,
                     color = BaroTextMuted,
                     lineHeight = 16.sp
@@ -483,11 +517,11 @@ private fun StressDetailContent(state: HealthDashboardState) {
         // Stress Zones Guide
         BaroCard(modifier = Modifier.fillMaxWidth(), padding = 18.dp) {
             Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                Text("PHYSIOLOGICAL STRESS TIERS", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = BaroTextWhite)
-                ZoneDescRow("0.0 – 1.0", "Calm", "High parasympathetic tone (vagal activation). Heart rate is near resting baseline with high variability.", BaroReadinessTeal)
-                ZoneDescRow("1.0 – 2.0", "Low Stress", "Normal cognitive engagement, relaxed daily movement.", BaroZone2Blue)
+                Text("ESTIMATED AUTONOMIC TIERS*", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = BaroTextWhite)
+                ZoneDescRow("0.0 – 1.0", "Calm", "Resting pulse near baseline with high nocturnal HRV.", BaroReadinessTeal)
+                ZoneDescRow("1.0 – 2.0", "Low Stress", "Normal daily cognitive engagement and relaxed movement.", BaroZone2Blue)
                 ZoneDescRow("2.0 – 2.5", "Medium Stress", "Mild sympathetic activation, cognitive load, or physical fatigue.", BaroZone3Orange)
-                ZoneDescRow("2.5 – 4.0", "High Stress", "Suppressed HRV and elevated heart rate while at rest.", BaroHeartCoral)
+                ZoneDescRow("2.5 – 4.0", "High Stress", "Elevated resting heart rate or suppressed nocturnal HRV.", BaroHeartCoral)
             }
         }
     }

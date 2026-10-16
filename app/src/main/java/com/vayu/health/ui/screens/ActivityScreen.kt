@@ -56,7 +56,11 @@ fun ActivityScreen(
     val distanceKm = activity?.distanceMeters?.let { it / 1000.0 }
     val activeCal = activity?.activeCaloriesKcal
     val totalCal = activity?.totalCaloriesKcal
-    val zoneMinutes = activeCal?.let { (it / 10.0).toInt().coerceIn(0, 180) }
+    val hrZones = com.vayu.health.data.model.HealthDataCalculations.calculateHeartRateZones(
+        samples = state.heartRate?.samples ?: emptyList(),
+        restingHr = state.restingHeartRate?.beatsPerMinute?.toInt()
+    )
+    val zoneMinutes = if (state.heartRate?.samples.isNullOrEmpty()) null else hrZones.activeZoneMinutes.toInt()
 
     var selectedView by remember { mutableStateOf("Hourly") }
 
@@ -149,7 +153,7 @@ fun ActivityScreen(
 
                 Spacer(modifier = Modifier.height(14.dp))
 
-                val hourlySteps = com.vayu.health.data.model.HealthDataCalculations.calculateHourlyStepDistribution(stepCount)
+                val hourlySteps = activity?.hourlySteps?.takeIf { it.isNotEmpty() } ?: List(24) { 0f }
                 BaroHourlyBarChart(
                     hourlyValues = hourlySteps,
                     barColor = BaroStrainBlue,
@@ -217,9 +221,9 @@ fun ActivityScreen(
 
             val zoneStr = zoneMinutes?.let { "$it min" } ?: "—"
             ActivityMetricTile(
-                title = "ZONE MINUTES",
+                title = "ZONE MINUTES*",
                 value = zoneStr,
-                subtitle = "Cardio & fat burn",
+                subtitle = "Pulse-based duration*",
                 icon = Icons.Default.Timer,
                 accent = BaroReadinessTeal,
                 modifier = Modifier.weight(1f)

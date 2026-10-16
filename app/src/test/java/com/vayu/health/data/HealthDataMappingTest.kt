@@ -663,7 +663,7 @@ class HealthDataMappingTest {
     }
 
     @Test
-    fun testPhysiologicalStress_firstbeatModelCalculation() {
+    fun testPhysiologicalStress_autonomicRatioCalculation() {
         val t0 = Instant.parse("2026-10-16T10:00:00Z")
         val fitbitSource = "com.fitbit.FitbitMobile"
 
@@ -688,5 +688,47 @@ class HealthDataMappingTest {
         assertNotNull(stress)
         assertEquals("Calm", stress?.levelLabel)
         assertTrue(stress!!.averageScore in 0.0f..1.0f)
+    }
+
+    @Test
+    fun testHeartRateZones_timestampDurationAndKarvonenReserve() {
+        val t0 = Instant.parse("2026-10-16T10:00:00Z")
+        val fitbitSource = "com.fitbit.FitbitMobile"
+
+        // 3 consecutive samples spaced by 60s
+        val hrSamples = listOf(
+            HeartRateSamplePoint(t0, 160L, fitbitSource),
+            HeartRateSamplePoint(t0.plusSeconds(60), 165L, fitbitSource),
+            HeartRateSamplePoint(t0.plusSeconds(120), 80L, fitbitSource)
+        )
+
+        val zones = HealthDataCalculations.calculateHeartRateZones(
+            samples = hrSamples,
+            restingHr = 60,
+            maxHr = 190
+        )
+        assertNotNull(zones)
+        assertTrue(zones.totalMinutes >= 2L)
+        assertTrue(zones.activeZoneMinutes > 0L)
+        assertTrue(zones.zone1Label.isNotEmpty())
+    }
+
+    @Test
+    fun testHourlyStepDistribution_usesRealTimestampsNotSyntheticPattern() {
+        val zone = java.time.ZoneOffset.UTC
+        val t1 = Instant.parse("2026-10-16T08:30:00Z") // 8 AM
+        val t2 = Instant.parse("2026-10-16T14:15:00Z") // 2 PM (14)
+
+        val stepRecords = listOf(
+            Pair(t1, 500L),
+            Pair(t2, 1200L)
+        )
+
+        val distribution = HealthDataCalculations.calculateHourlyStepDistribution(stepRecords, zone)
+        assertEquals(24, distribution.size)
+        assertEquals(500f, distribution[8], 0.01f)
+        assertEquals(1200f, distribution[14], 0.01f)
+        assertEquals(0f, distribution[0], 0.01f) // No synthetic steps at midnight
+        assertEquals(0f, distribution[10], 0.01f) // No fake pattern
     }
 }

@@ -66,9 +66,12 @@ fun BaroOverviewScreen(
     val stepCount = activity?.steps
     val stepCountFormatted = stepCount?.let { "%,d".format(it) } ?: "—"
 
-    // Zone minutes (authentic active calories expenditure / 10)
-    val activeCal = activity?.activeCaloriesKcal
-    val zoneMinutes = activeCal?.let { (it / 10.0).toInt().coerceIn(0, 180) }
+    // Zone minutes (timestamped HR zone duration across Fat Burn, Cardio, Peak)
+    val hrZones = HealthDataCalculations.calculateHeartRateZones(
+        samples = hr?.samples ?: emptyList(),
+        restingHr = rhr?.beatsPerMinute?.toInt()
+    )
+    val zoneMinutes = if (hr?.samples.isNullOrEmpty()) null else hrZones.activeZoneMinutes.toInt()
 
     Column(
         modifier = modifier
@@ -284,7 +287,7 @@ fun BaroOverviewScreen(
 
                         Text(stepCountFormatted, fontSize = 24.sp, fontWeight = FontWeight.Bold, color = BaroTextWhite)
 
-                        val hourlySteps = HealthDataCalculations.calculateHourlyStepDistribution(stepCount)
+                        val hourlySteps = activity?.hourlySteps?.takeIf { it.isNotEmpty() } ?: List(24) { 0f }
                         BaroHourlyBarChart(hourlyValues = hourlySteps, height = 44.dp)
 
                         Text("HEALTH CONNECT TOTAL", fontSize = 10.sp, fontWeight = FontWeight.Medium, color = BaroTextMuted)
@@ -309,7 +312,7 @@ fun BaroOverviewScreen(
                             horizontalArrangement = Arrangement.SpaceBetween,
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Text("ZONE MINUTES", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = BaroTextSecondary, letterSpacing = 0.6.sp)
+                            Text("ZONE MINUTES*", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = BaroTextSecondary, letterSpacing = 0.6.sp)
                             Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, null, tint = BaroTextMuted, modifier = Modifier.size(16.dp))
                         }
 
@@ -323,12 +326,12 @@ fun BaroOverviewScreen(
                         val dailyZones = listOf(0f, 0f, 0f, 0f, 0f, (zoneMinutes ?: 0).toFloat(), 0f)
                         BaroWeeklyBarChart(dailyValues = dailyZones, height = 44.dp, todayIndex = 5)
 
-                        val zoneSubtitle = if (zoneMinutes != null) "Daily active burn" else "Data unavailable"
+                        val zoneSubtitle = if (zoneMinutes != null) "Active HR duration*" else "Data unavailable"
                         Text(zoneSubtitle, fontSize = 9.5.sp, fontWeight = FontWeight.Medium, color = BaroTextMuted, maxLines = 1)
                     }
                 }
 
-                // Stress Card (Firstbeat ANS Gold-Standard Model)
+                // Stress Card (Autonomic Ratio Model)
                 val stress = HealthDataCalculations.calculatePhysiologicalStress(hr, rhr, hrv)
                 BaroCard(
                     modifier = Modifier.weight(1f).height(156.dp),
@@ -350,7 +353,7 @@ fun BaroOverviewScreen(
 
                         BaroSpeedometer(score = stress?.averageScore, height = 44.dp)
 
-                        val stressSubtitle = stress?.let { "HI %.1f   LO %.1f".format(it.maxScore, it.minScore) } ?: "* Firstbeat ANS Model"
+                        val stressSubtitle = stress?.let { "HI %.1f   LO %.1f".format(it.maxScore, it.minScore) } ?: "* Autonomic Ratio"
                         Text(stressSubtitle, fontSize = 9.5.sp, fontWeight = FontWeight.Medium, color = BaroTextMuted, maxLines = 1)
                     }
                 }
