@@ -638,10 +638,10 @@ object HealthDataCalculations {
     }
 
     /**
-     * Calculates authentic Resilience matching Google Health's 3-pillar model:
-     * - Sleep patterns (Typical / Optimal / Low)
-     * - Activity balance (Typical / Optimal / Low)
-     * - Physical calmness (Optimal / Typical / Low)
+     * Calculates authentic Vayu Resilience* on-device from Health Connect metrics:
+     * - Sleep patterns (evaluated from authentic sleep duration)
+     * - Activity balance (evaluated from authentic step count)
+     * - Physical calmness (evaluated from authentic resting HR & HRV)
      */
     fun calculateResilience(
         sleep: SleepMetric?,
@@ -649,42 +649,75 @@ object HealthDataCalculations {
         hrv: HrvMetric?,
         rhr: RestingHeartRateMetric?
     ): ResilienceMetric {
+        if (sleep == null && activity == null && hrv == null && rhr == null) {
+            return ResilienceMetric(
+                levelLabel = "Unavailable",
+                summaryText = "No activity, sleep, or vitals recorded yet today to evaluate resilience.",
+                sleepPatternsStatus = "Unavailable",
+                sleepPatternsText = "No sleep recorded today.",
+                activityBalanceStatus = "Unavailable",
+                activityBalanceText = "No activity recorded today.",
+                physicalCalmnessStatus = "Unavailable",
+                physicalCalmnessText = "No pulse vitals recorded today."
+            )
+        }
+
         // Pillar 1: Sleep patterns
-        val sleepDur = sleep?.actualSleepDurationMinutes ?: 0L
-        val (sleepStatus, sleepText) = when {
-            sleepDur >= 360L -> Pair("Typical", "You slept about as much as usual. Regular sleep is a great way to stay on top of your game.")
-            sleepDur >= 300L -> Pair("Moderate", "Your sleep duration was slightly below your baseline need, but manageable.")
-            else -> Pair("Low", "Insufficient sleep logged. Recovery needs more rest.")
+        val (sleepStatus, sleepText) = if (sleep != null && sleep.actualSleepDurationMinutes != null) {
+            val sleepDur = sleep.actualSleepDurationMinutes
+            when {
+                sleepDur >= 420L -> Pair("Optimal", "You logged over 7 hours of restful sleep, providing a strong foundation for recovery.")
+                sleepDur >= 360L -> Pair("Typical", "You slept about as much as usual. Regular sleep is a great way to stay on top of your game.")
+                sleepDur >= 300L -> Pair("Moderate", "Your sleep duration was slightly below your baseline need, but manageable.")
+                else -> Pair("Low", "Insufficient sleep logged (${sleepDur} min). Recovery needs more rest.")
+            }
+        } else {
+            Pair("Unavailable", "No sleep session recorded for this day.")
         }
 
         // Pillar 2: Activity balance
-        val steps = activity?.steps ?: 0L
-        val (actStatus, actText) = when {
-            steps in 5000..15000 -> Pair("Optimal", "Your daily activity was well balanced with your current physical recovery capacity.")
-            steps < 2500 -> Pair("Low", "Your activity was on the low side. Moving your body regularly can help build your resilience to stress.")
-            else -> Pair("Typical", "Activity levels are within normal everyday range.")
+        val (actStatus, actText) = if (activity != null && activity.steps != null) {
+            val steps = activity.steps
+            when {
+                steps in 5000..15000 -> Pair("Optimal", "Your daily activity was well balanced with your current physical recovery capacity.")
+                steps < 2500 -> Pair("Low", "Your activity was on the low side. Moving your body regularly can help build resilience.")
+                else -> Pair("Typical", "Activity levels are within normal everyday range.")
+            }
+        } else {
+            Pair("Unavailable", "No step count recorded for this day.")
         }
 
         // Pillar 3: Physical calmness
-        val hrvVal = hrv?.rmssdMillis ?: 40.0
-        val rhrVal = rhr?.beatsPerMinute ?: 70L
-        val (calmStatus, calmText) = when {
-            hrvVal >= 40.0 || rhrVal <= 72L -> Pair("Optimal", "Your body was physically calm. Your heart spent plenty of time in a relaxed state, which is great for resilience.")
-            hrvVal >= 25.0 -> Pair("Typical", "Autonomic markers indicate balanced sympathetic and parasympathetic activity.")
-            else -> Pair("Low", "Elevated resting pulse and reduced HRV indicate elevated physical load.")
+        val (calmStatus, calmText) = if (hrv != null || rhr != null) {
+            val hrvVal = hrv?.rmssdMillis
+            val rhrVal = rhr?.beatsPerMinute
+            when {
+                (hrvVal != null && hrvVal >= 40.0) || (rhrVal != null && rhrVal <= 70L) ->
+                    Pair("Optimal", "Your body was physically calm. Your heart spent plenty of time in a relaxed state, which is great for resilience.")
+                (hrvVal != null && hrvVal >= 25.0) || (rhrVal != null && rhrVal <= 78L) ->
+                    Pair("Typical", "Autonomic markers indicate balanced sympathetic and parasympathetic activity.")
+                else ->
+                    Pair("Low", "Elevated resting pulse or reduced HRV indicates elevated physical load.")
+            }
+        } else {
+            Pair("Unavailable", "No nocturnal resting pulse or HRV recorded for this day.")
         }
 
         // Overall Resilience Level
+        val actualSleepDur = sleep?.actualSleepDurationMinutes ?: 0L
         val overallLevel = when {
-            actStatus == "Low" && (sleepStatus == "Low" || sleepDur < 400L) -> "Low"
+            sleepStatus == "Unavailable" && actStatus == "Unavailable" && calmStatus == "Unavailable" -> "Unavailable"
+            actStatus == "Low" && (sleepStatus == "Low" || actualSleepDur < 400L) -> "Low"
             sleepStatus == "Optimal" && actStatus == "Optimal" && calmStatus == "Optimal" -> "Optimal"
             sleepStatus == "Low" || calmStatus == "Low" -> "Low"
+            sleepStatus == "Optimal" && calmStatus == "Optimal" -> "Optimal"
             else -> "Moderate"
         }
 
         val summary = when (overallLevel) {
             "Low" -> "Your body is asking for a bit more rest today. Taking it easier is a kind way to help yourself recharge"
             "Optimal" -> "Your body is resilient and prepared to take on high physical and mental demands today."
+            "Unavailable" -> "Incomplete data recorded today to compute an overall resilience tier."
             else -> "Your resilience is stable today. Maintain steady activity and keep hydration in check."
         }
 
@@ -710,15 +743,21 @@ object HealthDataCalculations {
         val summaryText: String
     )
 
+    /**
+     * Evaluates Vayu Readiness* on-device from authentic Health Connect records:
+     * - Requires exactly 7 distinct overnight sleep dates to establish baseline calibration.
+     * - ZERO fake fallback values: If sleep, HRV, or Resting HR is missing on the day, returns
+     *   an explicit Incomplete Data state without inventing synthetic 420m, 48ms, or 68bpm numbers.
+     */
     fun calculateReadiness(
         sleepHistory: List<DailySleepSummary>,
         todaySleep: SleepMetric?,
         todayHrv: HrvMetric?,
         todayRhr: RestingHeartRateMetric?
     ): ReadinessCalculationResult {
-        val nightsLogged = sleepHistory.size
-        if (nightsLogged < 7) {
-            val remaining = (7 - nightsLogged).coerceIn(1, 7)
+        val distinctNightsLogged = sleepHistory.map { it.date }.distinct().size
+        if (distinctNightsLogged < 7) {
+            val remaining = (7 - distinctNightsLogged).coerceIn(1, 7)
             return ReadinessCalculationResult(
                 score = null,
                 levelLabel = "Calibrating",
@@ -726,19 +765,34 @@ object HealthDataCalculations {
                 sleepComponentScore = 0,
                 hrvComponentScore = 0,
                 rhrComponentScore = 0,
-                summaryText = "To get your first daily readiness, wear your device to sleep for ${if (remaining == 1) "1 more night" else "$remaining more nights"}."
+                summaryText = "To complete baseline calibration, wear your device to sleep for ${if (remaining == 1) "1 more night" else "$remaining more nights"}."
             )
         }
 
-        // Night 7+ baseline evaluation: Evaluates recovery composite from 3 pillars
-        val sleepDur = todaySleep?.actualSleepDurationMinutes ?: 420L
-        val sleepScore = todaySleep?.recordedScore ?: ((sleepDur / 480.0) * 100.0).roundToInt().coerceIn(50, 100)
+        // Night 7+ baseline evaluation: Strictly require authentic data for all 3 pillars
+        val actualSleepMins = todaySleep?.actualSleepDurationMinutes
+        val hrvVal = todayHrv?.rmssdMillis
+        val rhrVal = todayRhr?.beatsPerMinute
 
-        val hrvVal = todayHrv?.rmssdMillis ?: 48.0
-        val hrvScore = ((hrvVal / 48.0) * 85.0).roundToInt().coerceIn(40, 100)
+        if (actualSleepMins == null || hrvVal == null || rhrVal == null) {
+            val missing = mutableListOf<String>()
+            if (actualSleepMins == null) missing.add("Sleep Duration")
+            if (hrvVal == null) missing.add("HRV")
+            if (rhrVal == null) missing.add("Resting Heart Rate")
+            return ReadinessCalculationResult(
+                score = null,
+                levelLabel = "Incomplete Data",
+                nightsRemaining = 0,
+                sleepComponentScore = 0,
+                hrvComponentScore = 0,
+                rhrComponentScore = 0,
+                summaryText = "Baseline calibrated, but waiting for today's authentic ${missing.joinToString(", ")} to compute Readiness."
+            )
+        }
 
-        val rhrVal = todayRhr?.beatsPerMinute ?: 68L
-        val rhrScore = (100 - ((rhrVal - 60).coerceAtLeast(0) * 2)).toInt().coerceIn(40, 100)
+        val sleepScore = todaySleep.recordedScore ?: ((actualSleepMins / 480.0) * 100.0).roundToInt().coerceIn(40, 100)
+        val hrvScore = ((hrvVal / 48.0) * 85.0).roundToInt().coerceIn(30, 100)
+        val rhrScore = (100 - ((rhrVal - 58).coerceAtLeast(0) * 2)).toInt().coerceIn(30, 100)
 
         val compositeScore = (sleepScore * 0.40 + hrvScore * 0.35 + rhrScore * 0.25).roundToInt().coerceIn(1, 100)
         val level = when {

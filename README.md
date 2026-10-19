@@ -5,7 +5,7 @@
 [![Language](https://img.shields.io/badge/Language-Kotlin%201.9.22-7F52FF?logo=kotlin&logoColor=white)](https://kotlinlang.org/)
 [![UI](https://img.shields.io/badge/UI-Jetpack%20Compose%20%7C%20Material3-4285F4?logo=jetpackcompose&logoColor=white)](https://developer.android.com/jetpack/compose)
 [![Health Connect](https://img.shields.io/badge/Integration-Google%20Health%20Connect-4285F4?logo=google&logoColor=white)](https://developer.android.com/health-and-fitness/guides/health-connect)
-[![Network](https://img.shields.io/badge/Network-0%20Internet%20Permissions-00E676)](#-100-local--zero-cloud-architecture)
+[![Privacy](https://img.shields.io/badge/Privacy-On--Device%20First-00E676)](#-biometric-privacy--direct-cloud-sync-architecture)
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
 
 A private, high-performance personal health dashboard for Android (optimized for Samsung Galaxy S25 Ultra). Vayu connects directly to **Google Health Connect** to present your authentic Fitbit wearable measurements in an ultra-clean, Bevel- and WHOOP-inspired dark liquid-glass interface.
@@ -33,40 +33,42 @@ As a software engineer and dedicated fitness enthusiast, this project was born d
 
 ---
 
-## 🧭 The Core Engineering Principle: Strict Pass-Through, Zero Black-Box Algorithms
+## 🧭 The Core Engineering Principle: Truth-in-Data & Zero Synthetic Hallucinations
 
-A central architectural decision defines Vayu: **It does NOT contain proprietary algorithms to fabricate synthetic scores.**
+A central architectural decision defines Vayu: **Authentic biometric data with transparent on-device modeling.**
 
 ```
 ┌────────────────────────────────────────────────────────────────────────┐
 │                        CONVENTIONAL HEALTH APPS                        │
-│ Raw Biometrics ──> [ Black-Box Opaque Algorithm ] ──> "Recovery: 72%" │
-│                     (Guesses, Estimates, Hallucinates)                 │
+│ Raw Biometrics ──> [ Black-Box Synthetic Fake ] ──> "Recovery: 72%"    │
+│                     (Guesses, Synthetic Fallbacks, Hallucinations)     │
 └────────────────────────────────────────────────────────────────────────┘
 
 ┌────────────────────────────────────────────────────────────────────────┐
 │                                  VAYU                                  │
 │ Raw Health Connect ──> [ Truthful Pass-Through ] ──> RMSSD: 54.2 ms    │
 │ Fitbit Records         (Zero Guesswork, 100% Verifiable)   RHR: 58 bpm │
-│                                                            Deep: 1h 42m│
+│                                                      SpO2: 98%         │
+│                        [ On-Device Models* ]   ──> READINESS*: 84      │
+│                        (Transparent, Distinct 7-Night Baseline)        │
 └────────────────────────────────────────────────────────────────────────┘
 ```
 
-Unlike fitness platforms that lock users behind proprietary, black-box algorithms that generate synthetic "Recovery %", "Readiness Scores", "Daily Strain", or "Sleep Performance" numbers:
-* **No Invented Scores**: Vayu never calculates artificial recovery or strain numbers from HRV or RHR. Real physiological recovery is reflected in your authentic raw baseline metrics—your true nocturnal RMSSD, your resting pulse, and your sleep architecture.
-* **Strict Pass-Through**: Vayu queries the exact, authentic measurements written by your wearable to Android Health Connect.
-* **No Fallbacks or Hallucinations**: If Fitbit has not recorded a metric for a particular day, Vayu displays **"Data unavailable"** with transparent, source-aware guidance. It never interpolates fake curve points or displays generic demo data.
-* **Exact Provenance**: Every tile, badge, and curve explicitly identifies its Health Connect `DataOrigin` source (e.g. `Fitbit Mobile`).
+* **No Synthetic Fallbacks**: When calculating Readiness*, Vayu never injects fake default numbers like 420m sleep, 48ms HRV, or 68bpm resting pulse. If an input is missing, Vayu shows an explicit `Incomplete Data` state.
+* **Baseline Calibration Requirement**: Calibration strictly requires 7 distinct overnight sleep recordings to establish personal baseline ranges before computing daily scores.
+* **Transparent Labeling (*)**: Android Health Connect does not expose closed-source Google Health Readiness or Resilience scores in its public SDK. Vayu's Readiness* and Resilience* scores are on-device physiological models calculated from your authentic sleep, HRV, and resting pulse records, marked transparently with an asterisk (*).
+* **Strict Pass-Through**: Exact Health Connect vitals (SpO2, Breathing Rate, Skin Temperature Variation, Steps, Calories Burned) are displayed directly with timestamps and source provenance.
+* **Pagination Across All Record Types**: Every Health Connect query uses paginated loops with `pageSize = 1000` to prevent data truncation.
 
 ---
 
-## 🔒 100% Local & Zero-Cloud Architecture
+## 🔒 Biometric Privacy & Direct Cloud Sync Architecture
 
 Vayu is engineered from the ground up to respect your biometric privacy:
-* **Zero Network Permissions**: The `android.permission.INTERNET` permission is completely absent from the Android Manifest. The app cannot make network calls, connect to remote servers, or transmit data off your device.
-* **No Analytics or Tracking**: Zero third-party telemetry SDKs, crash loggers, analytics, or ad frameworks.
-* **No User Accounts**: No registration, no login, no passwords, and no cloud profile.
-* **In-Memory Processing**: Biometric data is queried from Health Connect and held strictly in volatile RAM during active sessions.
+* **On-Device First**: All Health Connect metrics are queried locally and held strictly in volatile RAM during active sessions.
+* **Direct Official Endpoints**: Optional Google Health API integration connects directly to official Google endpoints using OAuth 2.0 without intermediary servers.
+* **Zero Third-Party Telemetry**: No third-party tracking SDKs, ad frameworks, crash loggers, or analytics brokers.
+* **No User Accounts**: No registration, no login, no passwords, and no proprietary cloud profile.
 * **Backup Exclusions**: Enforces `android:allowBackup="false"` and strict XML data extraction rules to prevent cloud or device-transfer extraction of sensitive records.
 
 ---
@@ -154,7 +156,7 @@ Vayu is designed to isolate your Fitbit data from other apps that may write to H
   * `testRepository_handlesEmptyPermissions` & `testRepository_handlesPartialMetricFailuresGracefully`: Verifies partial permissions.
 
 > [!NOTE]
-> All 36 unit tests executed and passed cleanly (`BUILD SUCCESSFUL`). Android Lint completed with 0 errors (`lintDebug`).
+> All 44 unit tests executed and passed cleanly (`BUILD SUCCESSFUL`). Android Lint completed with 0 errors (`lintDebug`).
 
 ---
 
@@ -162,8 +164,8 @@ Vayu is designed to isolate your Fitbit data from other apps that may write to H
 
 | File | Type | SHA-256 Checksum |
 | :--- | :--- | :--- |
-| **`Vayu-Personal-Test.apk`** | Sideloadable debug APK with Google Health API cloud integration & exact Fitbit restoration score | `A2F37EA323888A634B2ADDFEC61BC3A026E291F68C8A917C682E74311C61D20F` |
-| **`Vayu-debug.apk`** | Debug Build | `A2F37EA323888A634B2ADDFEC61BC3A026E291F68C8A917C682E74311C61D20F` |
+| **`Vayu-Personal-Test.apk`** | Sideloadable debug APK with truth-in-data modeling, paginated Health Connect queries & zero synthetic fallbacks | `010EBB98E93FBAD5D503A994A954E38C30E0CD4E352FE1C376DCF02C8C42CE25` |
+| **`Vayu-debug.apk`** | Debug Build | `010EBB98E93FBAD5D503A994A954E38C30E0CD4E352FE1C376DCF02C8C42CE25` |
 | **`Vayu-release.apk`** | Production Release Build | `9FDAC1331A6E1D615892954BB98A06DA70FA87B745094848BBF22594B00815DC` |
 
 ---

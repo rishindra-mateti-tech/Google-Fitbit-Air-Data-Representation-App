@@ -201,10 +201,10 @@ private fun ReadinessDetailContent(state: HealthDashboardState) {
             }
         }
 
-        // Google Health Notice / Summary
+        // Readiness Calibration Notice / Summary
         BaroCard(modifier = Modifier.fillMaxWidth()) {
             Column {
-                val header = if (score != null) "READINESS RECOVERY ASSESSMENT" else "GOOGLE HEALTH READINESS CALIBRATION"
+                val header = if (score != null) "READINESS RECOVERY ASSESSMENT" else "READINESS CALIBRATION"
                 Text(header, fontSize = 11.sp, fontWeight = FontWeight.Bold, color = BaroTextSecondary, letterSpacing = 0.8.sp)
                 Spacer(modifier = Modifier.height(8.dp))
                 val mainText = if (score != null) {
@@ -215,7 +215,7 @@ private fun ReadinessDetailContent(state: HealthDashboardState) {
                         else -> "Your body needs more recovery. Focus on rest and hydration today."
                     }
                 } else {
-                    "To get your first daily readiness, wear your device to sleep for $nightsText."
+                    "To complete baseline calibration, wear your device to sleep for $nightsText."
                 }
                 Text(
                     text = mainText,
@@ -228,13 +228,31 @@ private fun ReadinessDetailContent(state: HealthDashboardState) {
                 val subText = if (score != null) {
                     "Evaluated dynamically from your sleep restoration, nocturnal heart rate variability, and resting heart rate against your personalized baseline."
                 } else {
-                    "Google Health analyzes 7 consecutive nights of physiological recovery indicators to establish your personalized baseline."
+                    "Vayu analyzes 7 distinct overnight sleep recordings to establish your baseline calibration without synthetic fallback data."
                 }
                 Text(
                     text = subText,
                     fontSize = 12.sp,
                     color = BaroTextMuted,
                     lineHeight = 17.sp
+                )
+            }
+        }
+
+        // Vayu Model Transparency Card
+        BaroCard(modifier = Modifier.fillMaxWidth()) {
+            Column {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Default.Info, null, tint = BaroReadinessTeal, modifier = Modifier.size(15.dp))
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text("VAYU READINESS MODEL*", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = BaroTextSecondary, letterSpacing = 0.8.sp)
+                }
+                Spacer(modifier = Modifier.height(8.dp))
+                Text(
+                    text = "Calculated on-device from your authentic Health Connect sleep, HRV, and resting heart rate data. Android Health Connect and the Google Health API do not export proprietary Readiness scores to third-party apps. If Google publishes a direct Readiness API in the future, Vayu will automatically display the direct score.",
+                    fontSize = 11.5.sp,
+                    color = BaroTextMuted,
+                    lineHeight = 16.sp
                 )
             }
         }
@@ -435,6 +453,9 @@ private fun BreathingRateDetailContent(state: HealthDashboardState) {
     val resp = state.respiratory?.breathsPerMinute
     val history = state.respiratory?.dailyBreathingRateHistory ?: emptyList()
     val isFallback = state.respiratory?.isBreathingRateHistoricalFallback == true
+    val timestamp = state.respiratory?.respiratoryTimestamp
+    val timeFormatted = formatDetailTimestamp(timestamp)
+
     Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
         BaroCard(modifier = Modifier.fillMaxWidth(), padding = 18.dp) {
             Column {
@@ -443,7 +464,13 @@ private fun BreathingRateDetailContent(state: HealthDashboardState) {
                 Text(resp?.let { "%.1f brpm".format(it) } ?: "—", fontSize = 32.sp, fontWeight = FontWeight.Bold, color = BaroTextWhite)
                 Spacer(modifier = Modifier.height(6.dp))
                 val respStatus = if (resp != null) {
-                    if (isFallback) "Most recent recorded night · In normal sleeping range" else "✓ Typical · In normal sleeping range"
+                    if (isFallback && timeFormatted.isNotEmpty()) {
+                        "Most recent recorded night ($timeFormatted) · Normal sleeping range"
+                    } else if (timeFormatted.isNotEmpty()) {
+                        "Recorded $timeFormatted · Normal sleeping range"
+                    } else {
+                        "✓ Typical · In normal sleeping range"
+                    }
                 } else "Data unavailable"
                 Text(respStatus, fontSize = 12.sp, color = if (resp != null) BaroReadinessTeal else BaroTextMuted)
             }
@@ -465,6 +492,9 @@ private fun Spo2DetailContent(state: HealthDashboardState) {
     val spo2 = rawSpo2?.let { if (it <= 1.0) it * 100.0 else it }
     val history = state.respiratory?.dailySpo2History ?: emptyList()
     val isFallback = state.respiratory?.isSpo2HistoricalFallback == true
+    val timestamp = state.respiratory?.spo2Timestamp
+    val timeFormatted = formatDetailTimestamp(timestamp)
+
     Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
         BaroCard(modifier = Modifier.fillMaxWidth(), padding = 18.dp) {
             Column {
@@ -473,7 +503,13 @@ private fun Spo2DetailContent(state: HealthDashboardState) {
                 Text(spo2?.let { "%.0f%%".format(it) } ?: "—", fontSize = 32.sp, fontWeight = FontWeight.Bold, color = BaroTextWhite)
                 Spacer(modifier = Modifier.height(6.dp))
                 val spo2Status = if (spo2 != null) {
-                    if (isFallback) "Most recent recorded night · Normal blood oxygen level" else "✓ Typical · Normal blood oxygen level"
+                    if (isFallback && timeFormatted.isNotEmpty()) {
+                        "Most recent recorded night ($timeFormatted) · Normal blood oxygen level"
+                    } else if (timeFormatted.isNotEmpty()) {
+                        "Recorded $timeFormatted · Normal blood oxygen level"
+                    } else {
+                        "✓ Typical · Normal blood oxygen level"
+                    }
                 } else "Data unavailable"
                 Text(spo2Status, fontSize = 12.sp, color = if (spo2 != null) BaroReadinessTeal else BaroTextMuted)
             }
@@ -493,6 +529,9 @@ private fun Spo2DetailContent(state: HealthDashboardState) {
 private fun SkinTempDetailContent(state: HealthDashboardState) {
     val delta = state.respiratory?.skinTemperature?.averageDeltaCelsius
     val history = state.respiratory?.dailySkinTempHistory ?: emptyList()
+    val timestamp = state.respiratory?.skinTemperature?.timestamp
+    val timeFormatted = formatDetailTimestamp(timestamp)
+
     Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
         BaroCard(modifier = Modifier.fillMaxWidth(), padding = 18.dp) {
             Column {
@@ -500,7 +539,9 @@ private fun SkinTempDetailContent(state: HealthDashboardState) {
                 Spacer(modifier = Modifier.height(8.dp))
                 Text(delta?.let { "%+.1f °C".format(it) } ?: "—", fontSize = 32.sp, fontWeight = FontWeight.Bold, color = BaroTextWhite)
                 Spacer(modifier = Modifier.height(6.dp))
-                val skinStatus = if (delta != null) "Building baseline · Multi-day nocturnal tracking" else "Data unavailable"
+                val skinStatus = if (delta != null) {
+                    if (timeFormatted.isNotEmpty()) "Recorded $timeFormatted · Multi-day nocturnal tracking" else "Building baseline · Multi-day nocturnal tracking"
+                } else "Data unavailable"
                 Text(skinStatus, fontSize = 12.sp, color = BaroTextMuted)
             }
         }
@@ -558,9 +599,11 @@ private fun Vitals7DayBarCard(
 
             Spacer(modifier = Modifier.height(14.dp))
 
-            val floatValues = values.map { it?.toFloat() ?: 0f }
+            val floatValues = values.map { it?.toFloat() }
+            val dayLabels = last7Days.map { it.dayOfWeek.name.take(1) }
             BaroWeeklyBarChart(
-                dailyValues = floatValues,
+                dailyNullableValues = floatValues,
+                labels = dayLabels,
                 barColor = accentColor,
                 todayIndex = 6,
                 height = 54.dp
@@ -762,7 +805,7 @@ private fun ResilienceDetailContent(state: HealthDashboardState) {
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
                 Text(
-                    text = "Resilience",
+                    text = "Resilience*",
                     fontSize = 13.sp,
                     fontWeight = FontWeight.SemiBold,
                     color = BaroTextMuted
@@ -781,6 +824,24 @@ private fun ResilienceDetailContent(state: HealthDashboardState) {
                     color = BaroTextWhite,
                     textAlign = TextAlign.Center,
                     lineHeight = 19.sp
+                )
+            }
+        }
+
+        // Vayu Model Transparency Card
+        BaroCard(modifier = Modifier.fillMaxWidth()) {
+            Column {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Default.Info, null, tint = resiliencePurple, modifier = Modifier.size(15.dp))
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text("VAYU RESILIENCE MODEL*", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = BaroTextSecondary, letterSpacing = 0.8.sp)
+                }
+                Spacer(modifier = Modifier.height(8.dp))
+                Text(
+                    text = "Resilience* is modeled on-device by Vayu from your authentic Health Connect sleep, activity, resting heart rate, and HRV records. Android Health Connect and the Google Health API do not export proprietary Resilience scores to third-party applications. Vayu evaluates recovery across three physiological pillars without cloud telemetry.",
+                    fontSize = 11.5.sp,
+                    color = BaroTextMuted,
+                    lineHeight = 16.sp
                 )
             }
         }
@@ -968,4 +1029,10 @@ private fun CaloriesDetailContent(state: HealthDashboardState) {
             }
         }
     }
+}
+
+private fun formatDetailTimestamp(instant: java.time.Instant?): String {
+    if (instant == null) return ""
+    val dtf = java.time.format.DateTimeFormatter.ofPattern("MMM d, h:mm a").withZone(java.time.ZoneId.systemDefault())
+    return dtf.format(instant)
 }

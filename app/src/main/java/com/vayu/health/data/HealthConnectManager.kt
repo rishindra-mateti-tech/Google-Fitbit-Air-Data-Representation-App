@@ -121,6 +121,34 @@ open class HealthConnectManager(private val context: Context? = null) {
     }
 
     /**
+     * Reads all records matching the filter using Health Connect pageToken pagination.
+     * Prevents truncation on large query windows or high-frequency telemetry.
+     */
+    suspend inline fun <reified T : Record> readAllRecordsPaginated(
+        timeRangeFilter: TimeRangeFilter,
+        dataOriginFilter: Set<DataOrigin> = emptySet(),
+        pageSize: Int = 1000
+    ): List<T> {
+        val client = healthConnectClient ?: return emptyList()
+        val allRecords = mutableListOf<T>()
+        var pageToken: String? = null
+        do {
+            val response = client.readRecords(
+                ReadRecordsRequest(
+                    recordType = T::class,
+                    timeRangeFilter = timeRangeFilter,
+                    dataOriginFilter = dataOriginFilter,
+                    pageSize = pageSize,
+                    pageToken = pageToken
+                )
+            )
+            allRecords.addAll(response.records)
+            pageToken = response.pageToken
+        } while (pageToken != null)
+        return allRecords
+    }
+
+    /**
      * Reads the most recent sleep session in the window.
      * When sourceFilter is specified, only sessions from that DataOrigin are returned.
      * Preserves exact source sleep stages, does NOT conflate OUT_OF_BED with Awake,
@@ -132,21 +160,18 @@ open class HealthConnectManager(private val context: Context? = null) {
         sourceFilter: String? = null,
         targetDate: LocalDate? = null
     ): SleepMetric? {
-        val client = healthConnectClient ?: return null
+        if (healthConnectClient == null) return null
         if (!hasPermission(HealthPermission.getReadPermission(SleepSessionRecord::class))) {
             return null
         }
 
         return try {
             val dataOriginFilter = if (sourceFilter != null) setOf(DataOrigin(sourceFilter)) else emptySet()
-            val response = client.readRecords(
-                ReadRecordsRequest(
-                    recordType = SleepSessionRecord::class,
-                    timeRangeFilter = TimeRangeFilter.between(start, end),
-                    dataOriginFilter = dataOriginFilter
-                )
+            val allRecords = readAllRecordsPaginated<SleepSessionRecord>(
+                timeRangeFilter = TimeRangeFilter.between(start, end),
+                dataOriginFilter = dataOriginFilter
             )
-            val filteredRecords = response.records.filter {
+            val filteredRecords = allRecords.filter {
                 sourceFilter == null || it.metadata.dataOrigin.packageName == sourceFilter
             }
             if (filteredRecords.isEmpty()) return null
@@ -271,21 +296,18 @@ open class HealthConnectManager(private val context: Context? = null) {
      * When sourceFilter is specified, returns strictly sessions written by that source.
      */
     open suspend fun readSleepHistory(start: Instant, end: Instant, sourceFilter: String? = null): List<DailySleepSummary> {
-        val client = healthConnectClient ?: return emptyList()
+        if (healthConnectClient == null) return emptyList()
         if (!hasPermission(HealthPermission.getReadPermission(SleepSessionRecord::class))) {
             return emptyList()
         }
 
         return try {
             val dataOriginFilter = if (sourceFilter != null) setOf(DataOrigin(sourceFilter)) else emptySet()
-            val response = client.readRecords(
-                ReadRecordsRequest(
-                    recordType = SleepSessionRecord::class,
-                    timeRangeFilter = TimeRangeFilter.between(start, end),
-                    dataOriginFilter = dataOriginFilter
-                )
+            val allRecords = readAllRecordsPaginated<SleepSessionRecord>(
+                timeRangeFilter = TimeRangeFilter.between(start, end),
+                dataOriginFilter = dataOriginFilter
             )
-            val filteredRecords = response.records.filter {
+            val filteredRecords = allRecords.filter {
                 sourceFilter == null || it.metadata.dataOrigin.packageName == sourceFilter
             }
             val zone = ZoneId.systemDefault()
@@ -347,21 +369,18 @@ open class HealthConnectManager(private val context: Context? = null) {
         targetDate: LocalDate? = null,
         sleepSession: SleepMetric? = null
     ): RestingHeartRateMetric? {
-        val client = healthConnectClient ?: return null
+        if (healthConnectClient == null) return null
         if (!hasPermission(HealthPermission.getReadPermission(RestingHeartRateRecord::class))) {
             return null
         }
 
         return try {
-            val response = client.readRecords(
-                ReadRecordsRequest(
-                    recordType = RestingHeartRateRecord::class,
-                    timeRangeFilter = TimeRangeFilter.between(start, end)
-                )
+            val allRecords = readAllRecordsPaginated<RestingHeartRateRecord>(
+                timeRangeFilter = TimeRangeFilter.between(start, end)
             )
             val zone = ZoneId.systemDefault()
             val dateToMatch = targetDate ?: LocalDate.now()
-            val sourceRecords = response.records.filter { record ->
+            val sourceRecords = allRecords.filter { record ->
                 sourceFilter == null ||
                         record.metadata.dataOrigin.packageName.contains(sourceFilter, ignoreCase = true) ||
                         sourceFilter.contains(record.metadata.dataOrigin.packageName, ignoreCase = true)
@@ -396,20 +415,17 @@ open class HealthConnectManager(private val context: Context? = null) {
         end: Instant,
         sourceFilter: String? = null
     ): List<Pair<LocalDate, Long>> {
-        val client = healthConnectClient ?: return emptyList()
+        if (healthConnectClient == null) return emptyList()
         if (!hasPermission(HealthPermission.getReadPermission(RestingHeartRateRecord::class))) {
             return emptyList()
         }
 
         return try {
-            val response = client.readRecords(
-                ReadRecordsRequest(
-                    recordType = RestingHeartRateRecord::class,
-                    timeRangeFilter = TimeRangeFilter.between(start, end)
-                )
+            val allRecords = readAllRecordsPaginated<RestingHeartRateRecord>(
+                timeRangeFilter = TimeRangeFilter.between(start, end)
             )
             val zone = ZoneId.systemDefault()
-            response.records
+            allRecords
                 .filter { record ->
                     sourceFilter == null ||
                             record.metadata.dataOrigin.packageName.contains(sourceFilter, ignoreCase = true) ||
@@ -432,21 +448,18 @@ open class HealthConnectManager(private val context: Context? = null) {
         targetDate: LocalDate? = null,
         sleepSession: SleepMetric? = null
     ): HrvMetric? {
-        val client = healthConnectClient ?: return null
+        if (healthConnectClient == null) return null
         if (!hasPermission(HealthPermission.getReadPermission(HeartRateVariabilityRmssdRecord::class))) {
             return null
         }
 
         return try {
-            val response = client.readRecords(
-                ReadRecordsRequest(
-                    recordType = HeartRateVariabilityRmssdRecord::class,
-                    timeRangeFilter = TimeRangeFilter.between(start, end)
-                )
+            val allRecords = readAllRecordsPaginated<HeartRateVariabilityRmssdRecord>(
+                timeRangeFilter = TimeRangeFilter.between(start, end)
             )
             val zone = ZoneId.systemDefault()
             val dateToMatch = targetDate ?: LocalDate.now()
-            val sourceRecords = response.records.filter { record ->
+            val sourceRecords = allRecords.filter { record ->
                 sourceFilter == null ||
                         record.metadata.dataOrigin.packageName.contains(sourceFilter, ignoreCase = true) ||
                         sourceFilter.contains(record.metadata.dataOrigin.packageName, ignoreCase = true)
@@ -488,20 +501,17 @@ open class HealthConnectManager(private val context: Context? = null) {
         end: Instant,
         sourceFilter: String? = null
     ): List<Pair<LocalDate, Double>> {
-        val client = healthConnectClient ?: return emptyList()
+        if (healthConnectClient == null) return emptyList()
         if (!hasPermission(HealthPermission.getReadPermission(HeartRateVariabilityRmssdRecord::class))) {
             return emptyList()
         }
 
         return try {
-            val response = client.readRecords(
-                ReadRecordsRequest(
-                    recordType = HeartRateVariabilityRmssdRecord::class,
-                    timeRangeFilter = TimeRangeFilter.between(start, end)
-                )
+            val allRecords = readAllRecordsPaginated<HeartRateVariabilityRmssdRecord>(
+                timeRangeFilter = TimeRangeFilter.between(start, end)
             )
             val zone = ZoneId.systemDefault()
-            response.records
+            allRecords
                 .filter { record ->
                     sourceFilter == null ||
                             record.metadata.dataOrigin.packageName.contains(sourceFilter, ignoreCase = true) ||
@@ -634,14 +644,11 @@ open class HealthConnectManager(private val context: Context? = null) {
             var hourlyStepsList: List<Float> = emptyList()
             if (HealthPermission.getReadPermission(StepsRecord::class) in granted) {
                 try {
-                    val stepsResponse = client.readRecords(
-                        ReadRecordsRequest(
-                            recordType = StepsRecord::class,
-                            timeRangeFilter = TimeRangeFilter.between(start, end),
-                            dataOriginFilter = dataOriginFilter
-                        )
+                    val stepsRecords = readAllRecordsPaginated<StepsRecord>(
+                        timeRangeFilter = TimeRangeFilter.between(start, end),
+                        dataOriginFilter = dataOriginFilter
                     )
-                    val filteredSteps = stepsResponse.records.filter {
+                    val filteredSteps = stepsRecords.filter {
                         sourceFilter == null || it.metadata.dataOrigin.packageName == sourceFilter
                     }
                     val hourly = FloatArray(24) { 0f }
@@ -678,7 +685,7 @@ open class HealthConnectManager(private val context: Context? = null) {
     }
 
     /**
-     * Reads respiratory rate, oxygen saturation, and skin temperature.
+     * Reads respiratory rate, oxygen saturation, and skin temperature using paginated queries.
      * When sourceFilter is specified, filters records by that DataOrigin.
      */
     open suspend fun readRespiratory(
@@ -688,7 +695,7 @@ open class HealthConnectManager(private val context: Context? = null) {
         targetDate: LocalDate? = null,
         sleepSession: SleepMetric? = null
     ): RespiratoryMetric? {
-        val client = healthConnectClient ?: return null
+        if (healthConnectClient == null) return null
         val granted = getGrantedPermissions()
         val zone = ZoneId.systemDefault()
 
@@ -699,20 +706,17 @@ open class HealthConnectManager(private val context: Context? = null) {
         var dailyBreathingRateHistory = emptyList<Pair<LocalDate, Double>>()
         if (HealthPermission.getReadPermission(RespiratoryRateRecord::class) in granted) {
             try {
-                val resp = client.readRecords(
-                    ReadRecordsRequest(
-                        recordType = RespiratoryRateRecord::class,
-                        timeRangeFilter = TimeRangeFilter.between(start, end)
-                    )
+                val records = readAllRecordsPaginated<RespiratoryRateRecord>(
+                    timeRangeFilter = TimeRangeFilter.between(start, end)
                 )
-                val sourceRecords = resp.records.filter { record ->
+                val sourceRecords = records.filter { record ->
                     sourceFilter == null ||
                             record.metadata.dataOrigin.packageName.contains(sourceFilter, ignoreCase = true) ||
                             sourceFilter.contains(record.metadata.dataOrigin.packageName, ignoreCase = true)
                 }
                 dailyBreathingRateHistory = sourceRecords
                     .groupBy { it.time.atZone(zone).toLocalDate() }
-                    .mapValues { (_, records) -> records.map { it.rate }.average() }
+                    .mapValues { (_, recs) -> recs.map { it.rate }.average() }
                     .toList()
                     .sortedBy { it.first }
 
@@ -743,21 +747,18 @@ open class HealthConnectManager(private val context: Context? = null) {
         var dailySpo2History = emptyList<Pair<LocalDate, Double>>()
         if (HealthPermission.getReadPermission(OxygenSaturationRecord::class) in granted) {
             try {
-                val resp = client.readRecords(
-                    ReadRecordsRequest(
-                        recordType = OxygenSaturationRecord::class,
-                        timeRangeFilter = TimeRangeFilter.between(start, end)
-                    )
+                val records = readAllRecordsPaginated<OxygenSaturationRecord>(
+                    timeRangeFilter = TimeRangeFilter.between(start, end)
                 )
-                val sourceRecords = resp.records.filter { record ->
+                val sourceRecords = records.filter { record ->
                     sourceFilter == null ||
                             record.metadata.dataOrigin.packageName.contains(sourceFilter, ignoreCase = true) ||
                             sourceFilter.contains(record.metadata.dataOrigin.packageName, ignoreCase = true)
                 }
                 dailySpo2History = sourceRecords
                     .groupBy { it.time.atZone(zone).toLocalDate() }
-                    .mapValues { (_, records) ->
-                        val avg = records.map { it.percentage.value }.average()
+                    .mapValues { (_, recs) ->
+                        val avg = recs.map { it.percentage.value }.average()
                         if (avg <= 1.0) avg * 100.0 else avg
                     }
                     .toList()
@@ -789,21 +790,18 @@ open class HealthConnectManager(private val context: Context? = null) {
         var dailySkinTempHistory = emptyList<Pair<LocalDate, Double>>()
         if (isSkinTemperatureSupported() && HealthPermission.getReadPermission(SkinTemperatureRecord::class) in granted) {
             try {
-                val resp = client.readRecords(
-                    ReadRecordsRequest(
-                        recordType = SkinTemperatureRecord::class,
-                        timeRangeFilter = TimeRangeFilter.between(start, end)
-                    )
+                val records = readAllRecordsPaginated<SkinTemperatureRecord>(
+                    timeRangeFilter = TimeRangeFilter.between(start, end)
                 )
-                val sourceRecords = resp.records.filter { record ->
+                val sourceRecords = records.filter { record ->
                     sourceFilter == null ||
                             record.metadata.dataOrigin.packageName.contains(sourceFilter, ignoreCase = true) ||
                             sourceFilter.contains(record.metadata.dataOrigin.packageName, ignoreCase = true)
                 }
                 dailySkinTempHistory = sourceRecords
                     .groupBy { it.startTime.atZone(zone).toLocalDate() }
-                    .mapNotNull { (date, records) ->
-                        val deltas = records.flatMap { it.deltas.map { d -> d.delta.inCelsius } }
+                    .mapNotNull { (date, recs) ->
+                        val deltas = recs.flatMap { it.deltas.map { d -> d.delta.inCelsius } }
                         if (deltas.isNotEmpty()) date to deltas.average() else null
                     }
                     .sortedBy { it.first }
@@ -870,21 +868,18 @@ open class HealthConnectManager(private val context: Context? = null) {
     }
 
     open suspend fun readRawRecordsForInspector(start: Instant, end: Instant, sourceFilter: String? = null): List<RawHealthRecord> {
-        val client = healthConnectClient ?: return emptyList()
+        if (healthConnectClient == null) return emptyList()
         val list = mutableListOf<RawHealthRecord>()
         val granted = getGrantedPermissions()
         val dataOriginFilter = if (sourceFilter != null) setOf(DataOrigin(sourceFilter)) else emptySet()
 
         try {
             if (HealthPermission.getReadPermission(SleepSessionRecord::class) in granted) {
-                val sleep = client.readRecords(
-                    ReadRecordsRequest(
-                        SleepSessionRecord::class,
-                        TimeRangeFilter.between(start, end),
-                        dataOriginFilter = dataOriginFilter
-                    )
+                val sleep = readAllRecordsPaginated<SleepSessionRecord>(
+                    TimeRangeFilter.between(start, end),
+                    dataOriginFilter = dataOriginFilter
                 )
-                sleep.records.filter { sourceFilter == null || it.metadata.dataOrigin.packageName == sourceFilter }.forEach {
+                sleep.filter { sourceFilter == null || it.metadata.dataOrigin.packageName == sourceFilter }.forEach {
                     val dur = Duration.between(it.startTime, it.endTime).toMinutes()
                     list.add(
                         RawHealthRecord(
@@ -900,14 +895,11 @@ open class HealthConnectManager(private val context: Context? = null) {
             }
 
             if (HealthPermission.getReadPermission(HeartRateVariabilityRmssdRecord::class) in granted) {
-                val hrv = client.readRecords(
-                    ReadRecordsRequest(
-                        HeartRateVariabilityRmssdRecord::class,
-                        TimeRangeFilter.between(start, end),
-                        dataOriginFilter = dataOriginFilter
-                    )
+                val hrv = readAllRecordsPaginated<HeartRateVariabilityRmssdRecord>(
+                    TimeRangeFilter.between(start, end),
+                    dataOriginFilter = dataOriginFilter
                 )
-                hrv.records.filter { sourceFilter == null || it.metadata.dataOrigin.packageName == sourceFilter }.forEach {
+                hrv.filter { sourceFilter == null || it.metadata.dataOrigin.packageName == sourceFilter }.forEach {
                     list.add(
                         RawHealthRecord(
                             recordType = "HeartRateVariabilityRmssdRecord",
@@ -922,14 +914,11 @@ open class HealthConnectManager(private val context: Context? = null) {
             }
 
             if (HealthPermission.getReadPermission(RestingHeartRateRecord::class) in granted) {
-                val rhr = client.readRecords(
-                    ReadRecordsRequest(
-                        RestingHeartRateRecord::class,
-                        TimeRangeFilter.between(start, end),
-                        dataOriginFilter = dataOriginFilter
-                    )
+                val rhr = readAllRecordsPaginated<RestingHeartRateRecord>(
+                    TimeRangeFilter.between(start, end),
+                    dataOriginFilter = dataOriginFilter
                 )
-                rhr.records.filter { sourceFilter == null || it.metadata.dataOrigin.packageName == sourceFilter }.forEach {
+                rhr.filter { sourceFilter == null || it.metadata.dataOrigin.packageName == sourceFilter }.forEach {
                     list.add(
                         RawHealthRecord(
                             recordType = "RestingHeartRateRecord",
@@ -944,15 +933,11 @@ open class HealthConnectManager(private val context: Context? = null) {
             }
 
             if (HealthPermission.getReadPermission(HeartRateRecord::class) in granted) {
-                val hr = client.readRecords(
-                    ReadRecordsRequest(
-                        HeartRateRecord::class,
-                        TimeRangeFilter.between(start, end),
-                        dataOriginFilter = dataOriginFilter,
-                        pageSize = 50
-                    )
+                val hr = readAllRecordsPaginated<HeartRateRecord>(
+                    TimeRangeFilter.between(start, end),
+                    dataOriginFilter = dataOriginFilter
                 )
-                hr.records.filter { sourceFilter == null || it.metadata.dataOrigin.packageName == sourceFilter }.forEach {
+                hr.filter { sourceFilter == null || it.metadata.dataOrigin.packageName == sourceFilter }.forEach {
                     list.add(
                         RawHealthRecord(
                             recordType = "HeartRateRecord",
@@ -967,14 +952,11 @@ open class HealthConnectManager(private val context: Context? = null) {
             }
 
             if (HealthPermission.getReadPermission(StepsRecord::class) in granted) {
-                val steps = client.readRecords(
-                    ReadRecordsRequest(
-                        StepsRecord::class,
-                        TimeRangeFilter.between(start, end),
-                        dataOriginFilter = dataOriginFilter
-                    )
+                val steps = readAllRecordsPaginated<StepsRecord>(
+                    TimeRangeFilter.between(start, end),
+                    dataOriginFilter = dataOriginFilter
                 )
-                steps.records.filter { sourceFilter == null || it.metadata.dataOrigin.packageName == sourceFilter }.forEach {
+                steps.filter { sourceFilter == null || it.metadata.dataOrigin.packageName == sourceFilter }.forEach {
                     list.add(
                         RawHealthRecord(
                             recordType = "StepsRecord",
@@ -989,14 +971,11 @@ open class HealthConnectManager(private val context: Context? = null) {
             }
 
             if (HealthPermission.getReadPermission(DistanceRecord::class) in granted) {
-                val distance = client.readRecords(
-                    ReadRecordsRequest(
-                        DistanceRecord::class,
-                        TimeRangeFilter.between(start, end),
-                        dataOriginFilter = dataOriginFilter
-                    )
+                val distance = readAllRecordsPaginated<DistanceRecord>(
+                    TimeRangeFilter.between(start, end),
+                    dataOriginFilter = dataOriginFilter
                 )
-                distance.records.filter { sourceFilter == null || it.metadata.dataOrigin.packageName == sourceFilter }.forEach {
+                distance.filter { sourceFilter == null || it.metadata.dataOrigin.packageName == sourceFilter }.forEach {
                     list.add(
                         RawHealthRecord(
                             recordType = "DistanceRecord",
@@ -1011,14 +990,11 @@ open class HealthConnectManager(private val context: Context? = null) {
             }
 
             if (HealthPermission.getReadPermission(ActiveCaloriesBurnedRecord::class) in granted) {
-                val cal = client.readRecords(
-                    ReadRecordsRequest(
-                        ActiveCaloriesBurnedRecord::class,
-                        TimeRangeFilter.between(start, end),
-                        dataOriginFilter = dataOriginFilter
-                    )
+                val cal = readAllRecordsPaginated<ActiveCaloriesBurnedRecord>(
+                    TimeRangeFilter.between(start, end),
+                    dataOriginFilter = dataOriginFilter
                 )
-                cal.records.filter { sourceFilter == null || it.metadata.dataOrigin.packageName == sourceFilter }.forEach {
+                cal.filter { sourceFilter == null || it.metadata.dataOrigin.packageName == sourceFilter }.forEach {
                     list.add(
                         RawHealthRecord(
                             recordType = "ActiveCaloriesBurnedRecord",
@@ -1033,14 +1009,11 @@ open class HealthConnectManager(private val context: Context? = null) {
             }
 
             if (HealthPermission.getReadPermission(TotalCaloriesBurnedRecord::class) in granted) {
-                val totCal = client.readRecords(
-                    ReadRecordsRequest(
-                        TotalCaloriesBurnedRecord::class,
-                        TimeRangeFilter.between(start, end),
-                        dataOriginFilter = dataOriginFilter
-                    )
+                val totCal = readAllRecordsPaginated<TotalCaloriesBurnedRecord>(
+                    TimeRangeFilter.between(start, end),
+                    dataOriginFilter = dataOriginFilter
                 )
-                totCal.records.filter { sourceFilter == null || it.metadata.dataOrigin.packageName == sourceFilter }.forEach {
+                totCal.filter { sourceFilter == null || it.metadata.dataOrigin.packageName == sourceFilter }.forEach {
                     list.add(
                         RawHealthRecord(
                             recordType = "TotalCaloriesBurnedRecord",
@@ -1055,14 +1028,11 @@ open class HealthConnectManager(private val context: Context? = null) {
             }
 
             if (HealthPermission.getReadPermission(OxygenSaturationRecord::class) in granted) {
-                val spo2 = client.readRecords(
-                    ReadRecordsRequest(
-                        OxygenSaturationRecord::class,
-                        TimeRangeFilter.between(start, end),
-                        dataOriginFilter = dataOriginFilter
-                    )
+                val spo2 = readAllRecordsPaginated<OxygenSaturationRecord>(
+                    TimeRangeFilter.between(start, end),
+                    dataOriginFilter = dataOriginFilter
                 )
-                spo2.records.filter { sourceFilter == null || it.metadata.dataOrigin.packageName == sourceFilter }.forEach {
+                spo2.filter { sourceFilter == null || it.metadata.dataOrigin.packageName == sourceFilter }.forEach {
                     list.add(
                         RawHealthRecord(
                             recordType = "OxygenSaturationRecord",
@@ -1077,14 +1047,11 @@ open class HealthConnectManager(private val context: Context? = null) {
             }
 
             if (HealthPermission.getReadPermission(RespiratoryRateRecord::class) in granted) {
-                val resp = client.readRecords(
-                    ReadRecordsRequest(
-                        RespiratoryRateRecord::class,
-                        TimeRangeFilter.between(start, end),
-                        dataOriginFilter = dataOriginFilter
-                    )
+                val resp = readAllRecordsPaginated<RespiratoryRateRecord>(
+                    TimeRangeFilter.between(start, end),
+                    dataOriginFilter = dataOriginFilter
                 )
-                resp.records.filter { sourceFilter == null || it.metadata.dataOrigin.packageName == sourceFilter }.forEach {
+                resp.filter { sourceFilter == null || it.metadata.dataOrigin.packageName == sourceFilter }.forEach {
                     list.add(
                         RawHealthRecord(
                             recordType = "RespiratoryRateRecord",
@@ -1099,14 +1066,11 @@ open class HealthConnectManager(private val context: Context? = null) {
             }
 
             if (isSkinTemperatureSupported() && HealthPermission.getReadPermission(SkinTemperatureRecord::class) in granted) {
-                val skin = client.readRecords(
-                    ReadRecordsRequest(
-                        SkinTemperatureRecord::class,
-                        TimeRangeFilter.between(start, end),
-                        dataOriginFilter = dataOriginFilter
-                    )
+                val skin = readAllRecordsPaginated<SkinTemperatureRecord>(
+                    TimeRangeFilter.between(start, end),
+                    dataOriginFilter = dataOriginFilter
                 )
-                skin.records.filter { sourceFilter == null || it.metadata.dataOrigin.packageName == sourceFilter }.forEach {
+                skin.filter { sourceFilter == null || it.metadata.dataOrigin.packageName == sourceFilter }.forEach {
                     val count = it.deltas.size
                     val base = it.baseline?.inCelsius?.let { b -> "Base: ${"%.1f".format(b)}°C, " } ?: ""
                     list.add(

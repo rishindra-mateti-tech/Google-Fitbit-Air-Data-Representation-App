@@ -199,7 +199,7 @@ fun BaroOverviewScreen(
                 val readinessProgress = readinessScore?.let { it / 100f }
                 val readinessText = readinessScore?.toString() ?: "—"
                 BaroCircleGauge(
-                    label = "READINESS",
+                    label = "READINESS*",
                     valueText = readinessText,
                     progress = readinessProgress,
                     accentColor = BaroReadinessTeal,
@@ -222,7 +222,7 @@ fun BaroOverviewScreen(
                 modifier = Modifier.clickable { viewModel.openMetricDetail(MetricDetailType.RESILIENCE) }
             ) {
                 BaroCircleGauge(
-                    label = "RESILIENCE",
+                    label = "RESILIENCE*",
                     valueText = resilienceLevel,
                     progress = resilienceProg,
                     accentColor = Color(0xFF8A70D6),
@@ -233,7 +233,16 @@ fun BaroOverviewScreen(
             }
         }
 
-        Spacer(modifier = Modifier.height(26.dp))
+        Spacer(modifier = Modifier.height(10.dp))
+        Text(
+            text = "*Calculated by Vayu from Health Connect vitals (Google Health does not export Readiness or Resilience in its API).",
+            fontSize = 9.5.sp,
+            color = BaroTextMuted,
+            textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp)
+        )
+
+        Spacer(modifier = Modifier.height(20.dp))
 
         // 3. 2x2 Metric Grid (Heart Rate, Steps, Zone Minutes, Stress)
         Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -273,11 +282,19 @@ fun BaroOverviewScreen(
 
                         BaroSparklineWave(samples = hrSamples, height = 44.dp, showLiveIndicator = latestBpm != null)
 
+                        val hrUpdateStr = if (hr?.timestamp != null) "Updated ${viewModel.formatTime(hr.timestamp)}" else null
+                        val subtitleText = listOfNotNull(
+                            restBpm?.let { "REST $it bpm" } ?: (latestBpm?.let { "CURRENT $it bpm" }),
+                            hrUpdateStr
+                        ).joinToString(" • ").ifEmpty { "No pulse data" }
+
                         Text(
-                            text = restBpm?.let { "REST $it bpm" } ?: (latestBpm?.let { "CURRENT $it bpm" } ?: "No pulse data"),
-                            fontSize = 10.sp,
+                            text = subtitleText,
+                            fontSize = 9.5.sp,
                             fontWeight = FontWeight.Medium,
-                            color = BaroTextMuted
+                            color = BaroTextMuted,
+                            maxLines = 1,
+                            overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
                         )
                     }
                 }

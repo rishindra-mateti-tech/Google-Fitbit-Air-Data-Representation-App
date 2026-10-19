@@ -841,13 +841,13 @@ fun PrivacyPolicyDialog(onDismiss: () -> Unit) {
                     lineHeight = 18.sp
                 )
                 Text(
-                    text = "• Zero Proprietary / Black-Box Algorithms: Unlike apps that lock you behind opaque algorithms to guess 'recovery %' or 'strain', Vayu is a pure, truthful data representation layer. It reads exact Health Connect records written by your wearable and presents the authentic physiological measurements (RMSSD HRV, RHR, sleep stages, SpO₂, calories) with zero estimation.",
+                    text = "• Transparent Physiological Modeling: Unlike apps that lock you behind opaque paywalls or invent synthetic fallback numbers, Vayu is a truthful biometric layer. Health Connect metrics (RMSSD HRV, RHR, sleep stages, SpO₂, breathing rate, skin temperature) are read directly with zero synthetic padding. Composite metrics like Readiness* and Resilience* are calculated entirely on-device and transparently marked with an asterisk (*).",
                     fontSize = 13.sp,
                     color = TextSecondary,
                     lineHeight = 18.sp
                 )
                 Text(
-                    text = "• 100% On-Device & Zero Cloud: Vayu does not request Internet permission (android.permission.INTERNET). Zero data leaves your device. No backend servers, analytics, tracking SDKs, or cloud accounts.",
+                    text = "• On-Device First Privacy: Biometric records are processed directly on your device via Health Connect. Optional Google Health API cloud synchronization connects strictly to official Google endpoints with zero third-party telemetry SDKs, ad networks, or data brokers.",
                     fontSize = 13.sp,
                     color = TextSecondary,
                     lineHeight = 18.sp

@@ -89,14 +89,16 @@ fun BaroHourlyBarChart(
  */
 @Composable
 fun BaroWeeklyBarChart(
-    dailyValues: List<Float>, // 7 values for Sun to Sat
+    dailyValues: List<Float> = emptyList(),
+    dailyNullableValues: List<Float?>? = null,
+    labels: List<String>? = null,
     modifier: Modifier = Modifier,
     barColor: Color = BaroReadinessTeal,
     emptyBarColor: Color = Color(0xFF222226),
-    todayIndex: Int = 5, // 0 = Sun ... 6 = Sat
+    todayIndex: Int = 6, // 0 = 6 days ago ... 6 = today
     height: Dp = 46.dp
 ) {
-    val dayLabels = listOf("S", "S", "M", "T", "W", "T", "F")
+    val dayLabels = labels ?: listOf("S", "S", "M", "T", "W", "T", "F")
 
     Column(modifier = modifier.fillMaxWidth()) {
         Canvas(
@@ -105,15 +107,19 @@ fun BaroWeeklyBarChart(
                 .height(height)
         ) {
             val count = 7
-            val values = if (dailyValues.isEmpty()) {
-                List(count) { 0f }
+            val nullableValues: List<Float?> = if (dailyNullableValues != null) {
+                if (dailyNullableValues.size < count) {
+                    dailyNullableValues + List(count - dailyNullableValues.size) { null }
+                } else dailyNullableValues.take(count)
             } else {
-                dailyValues.take(count).let {
-                    if (it.size < count) it + List(count - it.size) { 0f } else it
+                val base = if (dailyValues.isEmpty()) List(count) { 0f } else {
+                    if (dailyValues.size < count) dailyValues + List(count - dailyValues.size) { 0f } else dailyValues.take(count)
                 }
+                base.map { if (it > 0f) it else null }
             }
 
-            val maxVal = (values.maxOrNull() ?: 1f).coerceAtLeast(1f)
+            val validNumbers = nullableValues.filterNotNull()
+            val maxVal = (validNumbers.maxOrNull() ?: 1f).coerceAtLeast(1f)
             val w = size.width
             val h = size.height
 
@@ -126,24 +132,24 @@ fun BaroWeeklyBarChart(
             val totalContentWidth = count * barWidth + totalSpacing
             val startOffsetX = (w - totalContentWidth) / 2f
 
-            values.forEachIndexed { i, value ->
+            nullableValues.forEachIndexed { i, value ->
                 val x = startOffsetX + i * (barWidth + barSpacing)
-                val barFraction = (value / maxVal).coerceIn(0f, 1f)
-                val barH = if (barFraction > 0f) (barFraction * (h - 8.dp.toPx())).coerceAtLeast(6.dp.toPx()) else 4.dp.toPx()
+                val isRecorded = value != null
+                val barFraction = if (value != null) (value / maxVal).coerceIn(0.08f, 1f) else 0f
+                val barH = if (isRecorded) (barFraction * (h - 8.dp.toPx())).coerceAtLeast(6.dp.toPx()) else 4.dp.toPx()
                 val y = h - barH
 
                 val isToday = i == todayIndex
-                val isFilled = value > 0f
 
                 drawRoundRect(
-                    color = if (isFilled) barColor else emptyBarColor,
+                    color = if (isRecorded) barColor else emptyBarColor,
                     topLeft = Offset(x, y),
                     size = Size(barWidth, barH),
                     cornerRadius = cornerRadius
                 )
 
-                // Dot indicator for today or highlighted days
-                if (isToday && isFilled) {
+                // Dot indicator for today or highlighted days when recorded
+                if (isToday && isRecorded) {
                     drawCircle(
                         color = barColor,
                         radius = 2.5.dp.toPx(),
@@ -159,7 +165,7 @@ fun BaroWeeklyBarChart(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.SpaceAround
         ) {
-            dayLabels.forEachIndexed { idx, label ->
+            dayLabels.take(7).forEachIndexed { idx, label ->
                 val isToday = idx == todayIndex
                 Text(
                     text = label,

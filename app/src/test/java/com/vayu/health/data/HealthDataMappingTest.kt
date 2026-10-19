@@ -807,4 +807,163 @@ class HealthDataMappingTest {
         assertEquals("In range", quality.interruptionsStatus)
         assertEquals(64L, quality.sleepingHeartRateAvg)
     }
+
+    @Test
+    fun testReadiness_requiresExactly7DistinctSleepDates() {
+        val today = LocalDate.now()
+
+        // 6 distinct dates
+        val history6Nights = (1..6).map {
+            DailySleepSummary(
+                date = today.minusDays(it.toLong()),
+                actualSleepMinutes = 420L,
+                sessionElapsedMinutes = 450L,
+                sourcePackage = "com.fitbit.FitbitMobile"
+            )
+        }
+        val result6 = HealthDataCalculations.calculateReadiness(
+            sleepHistory = history6Nights,
+            todaySleep = null,
+            todayHrv = null,
+            todayRhr = null
+        )
+        assertEquals("Calibrating", result6.levelLabel)
+        assertEquals(1, result6.nightsRemaining)
+        assertNull(result6.score)
+        assertTrue(result6.summaryText.contains("1 more night"))
+
+        // 7 entries, but 2 share the same date (e.g. nap + overnight, only 6 distinct dates)
+        val history7EntriesDuplicateDate = history6Nights + DailySleepSummary(
+            date = today.minusDays(1), // duplicate date
+            actualSleepMinutes = 60L,
+            sessionElapsedMinutes = 60L,
+            sourcePackage = "com.fitbit.FitbitMobile"
+        )
+        val resultDup = HealthDataCalculations.calculateReadiness(
+            sleepHistory = history7EntriesDuplicateDate,
+            todaySleep = null,
+            todayHrv = null,
+            todayRhr = null
+        )
+        assertEquals("Calibrating", resultDup.levelLabel)
+        assertEquals(1, resultDup.nightsRemaining)
+        assertNull(resultDup.score)
+
+        // 7 distinct dates
+        val history7Distinct = (1..7).map {
+            DailySleepSummary(
+                date = today.minusDays(it.toLong()),
+                actualSleepMinutes = 420L,
+                sessionElapsedMinutes = 450L,
+                sourcePackage = "com.fitbit.FitbitMobile"
+            )
+        }
+        val result7 = HealthDataCalculations.calculateReadiness(
+            sleepHistory = history7Distinct,
+            todaySleep = null,
+            todayHrv = null,
+            todayRhr = null
+        )
+        // With 7 distinct dates, calibration is complete, but missing today's authentic inputs
+        assertEquals("Incomplete Data", result7.levelLabel)
+        assertEquals(0, result7.nightsRemaining)
+        assertNull(result7.score)
+    }
+
+    @Test
+    fun testReadiness_missingInputsReturnIncompleteData_noSyntheticFallbacks() {
+        val today = LocalDate.now()
+        val history7Distinct = (1..7).map {
+            DailySleepSummary(
+                date = today.minusDays(it.toLong()),
+                actualSleepMinutes = 450L,
+                sessionElapsedMinutes = 480L,
+                sourcePackage = "com.fitbit.FitbitMobile"
+            )
+        }
+        val validSleep = SleepMetric(
+            sessionElapsedMinutes = 450L,
+            actualSleepDurationMinutes = 420L,
+            deepMinutes = 90L,
+            remMinutes = 90L,
+            lightMinutes = 240L,
+            sleepingMinutes = 0L,
+            awakeMinutes = 30L,
+            outOfBedMinutes = 0L,
+            startTime = Instant.now().minusSeconds(450 * 60),
+            endTime = Instant.now(),
+            stages = emptyList(),
+            sourcePackage = "com.fitbit.FitbitMobile"
+        )
+        val validHrv = HrvMetric(rmssdMillis = 48.0, timestamp = Instant.now(), sourcePackage = "com.fitbit.FitbitMobile")
+        val validRhr = RestingHeartRateMetric(beatsPerMinute = 62L, timestamp = Instant.now(), sourcePackage = "com.fitbit.FitbitMobile")
+
+        // Missing sleep
+        val missingSleepResult = HealthDataCalculations.calculateReadiness(history7Distinct, null, validHrv, validRhr)
+        assertEquals("Incomplete Data", missingSleepResult.levelLabel)
+        assertNull(missingSleepResult.score)
+        assertTrue(missingSleepResult.summaryText.contains("Sleep Duration"))
+
+        // Missing HRV
+        val missingHrvResult = HealthDataCalculations.calculateReadiness(history7Distinct, validSleep, null, validRhr)
+        assertEquals("Incomplete Data", missingHrvResult.levelLabel)
+        assertNull(missingHrvResult.score)
+        assertTrue(missingHrvResult.summaryText.contains("HRV"))
+
+        // Missing Resting HR
+        val missingRhrResult = HealthDataCalculations.calculateReadiness(history7Distinct, validSleep, validHrv, null)
+        assertEquals("Incomplete Data", missingRhrResult.levelLabel)
+        assertNull(missingRhrResult.score)
+        assertTrue(missingRhrResult.summaryText.contains("Resting Heart Rate"))
+
+        // All 3 authentic inputs present: computes readiness score
+        val completeResult = HealthDataCalculations.calculateReadiness(history7Distinct, validSleep, validHrv, validRhr)
+        assertNotNull(completeResult.score)
+        assertTrue(completeResult.score!! in 1..100)
+        assertTrue(completeResult.levelLabel in listOf("Optimal", "Good", "Moderate", "Low"))
+        assertEquals(0, completeResult.nightsRemaining)
+    }
+
+    @Test
+    fun testResilience_missingAllInputs_returnsUnavailable() {
+        val resilience = HealthDataCalculations.calculateResilience(null, null, null, null)
+        assertEquals("Unavailable", resilience.levelLabel)
+        assertEquals("Unavailable", resilience.sleepPatternsStatus)
+        assertEquals("Unavailable", resilience.activityBalanceStatus)
+        assertEquals("Unavailable", resilience.physicalCalmnessStatus)
+        assertTrue(resilience.summaryText.contains("Incomplete data") || resilience.summaryText.contains("No activity"))
+    }
+
+    @Test
+    fun test7DayBarChart_missingDaysArePreservedAsNull_noZeroFilledFakes() {
+        val today = LocalDate.now()
+        val recordedHistory = listOf(
+            today to 98.0,
+            today.minusDays(2) to 97.0,
+            today.minusDays(5) to 99.0
+        )
+        val last7Days = (6 downTo 0).map { today.minusDays(it.toLong()) }
+        val historyMap = recordedHistory.toMap()
+        val mappedValues = last7Days.map { date -> historyMap[date] }
+
+        // Day 0 (6 days ago): missing -> null
+        assertNull(mappedValues[0])
+        // Day 1 (5 days ago): present -> 99.0
+        assertEquals(99.0, mappedValues[1])
+        // Day 2 (4 days ago): missing -> null
+        assertNull(mappedValues[2])
+        // Day 3 (3 days ago): missing -> null
+        assertNull(mappedValues[3])
+        // Day 4 (2 days ago): present -> 97.0
+        assertEquals(97.0, mappedValues[4])
+        // Day 5 (1 day ago): missing -> null
+        assertNull(mappedValues[5])
+        // Day 6 (today): present -> 98.0
+        assertEquals(98.0, mappedValues[6])
+
+        // Verify valid entries count is strictly 3, without injecting fake 0.0 values
+        val nonNullEntries = mappedValues.filterNotNull()
+        assertEquals(3, nonNullEntries.size)
+        assertEquals(listOf(99.0, 97.0, 98.0), nonNullEntries)
+    }
 }
