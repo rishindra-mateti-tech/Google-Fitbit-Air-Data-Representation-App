@@ -106,6 +106,9 @@ dependencies {
     // Health Connect Client
     implementation(libs.androidx.health.connect)
     
+    // Networking (Google Health API)
+    implementation("com.squareup.okhttp3:okhttp:4.12.0")
+
     // Coroutines
     implementation(libs.kotlinx.coroutines.android)
     implementation(libs.kotlinx.coroutines.play.services)
@@ -113,6 +116,7 @@ dependencies {
     // Unit Testing
     testImplementation("junit:junit:4.13.2")
     testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.8.1")
+    testImplementation("org.json:json:20240303")
 
     // Instrumented Testing
     androidTestImplementation("androidx.test.ext:junit:1.2.1")

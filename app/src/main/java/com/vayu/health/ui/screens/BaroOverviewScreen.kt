@@ -44,6 +44,8 @@ fun BaroOverviewScreen(
     modifier: Modifier = Modifier
 ) {
     val scrollState = rememberScrollState()
+    val selectedDate by viewModel.selectedDate.collectAsState()
+    val isToday = !selectedDate.isBefore(java.time.LocalDate.now())
 
     val sleep = state.sleep
     val hr = state.heartRate
@@ -54,7 +56,7 @@ fun BaroOverviewScreen(
 
     // Authentic Sleep calculation from Health Connect
     val sleepScore = state.sleepScore ?: HealthDataCalculations.calculateSleepScore(sleep)
-    val sleepScoreStr = sleepScore?.let { "$it%" } ?: "—"
+    val sleepScoreStr = sleepScore?.toString() ?: "—"
     val sleepProgress = sleepScore?.let { it / 100f }
 
     // Heart rate samples
@@ -109,12 +111,13 @@ fun BaroOverviewScreen(
                 )
                 IconButton(
                     onClick = { viewModel.selectNextDay() },
+                    enabled = !isToday,
                     modifier = Modifier.size(32.dp)
                 ) {
                     Icon(
                         imageVector = Icons.Default.ChevronRight,
                         contentDescription = "Next Day",
-                        tint = BaroTextMuted,
+                        tint = if (isToday) BaroTextMuted.copy(alpha = 0.25f) else BaroTextMuted,
                         modifier = Modifier.size(20.dp)
                     )
                 }
@@ -125,6 +128,8 @@ fun BaroOverviewScreen(
                 horizontalArrangement = Arrangement.spacedBy(6.dp)
             ) {
                 // SYNCED pill
+                val syncLabel = if (state.isCloudSyncActive) "CLOUD SYNC" else "SYNCED"
+                val syncColor = if (state.isCloudSyncActive) VayuCyan else BaroReadinessTeal
                 Row(
                     modifier = Modifier
                         .clip(RoundedCornerShape(12.dp))
@@ -137,10 +142,10 @@ fun BaroOverviewScreen(
                         modifier = Modifier
                             .size(6.dp)
                             .clip(CircleShape)
-                            .background(BaroReadinessTeal)
+                            .background(syncColor)
                     )
                     Text(
-                        text = "SYNCED",
+                        text = syncLabel,
                         fontSize = 10.sp,
                         fontWeight = FontWeight.Bold,
                         color = BaroTextSecondary,
@@ -176,7 +181,7 @@ fun BaroOverviewScreen(
                 modifier = Modifier.clickable { onOpenTab(VayuTab.SLEEP) }
             ) {
                 BaroCircleGauge(
-                    label = "SLEEP*",
+                    label = "SLEEP",
                     valueText = sleepScoreStr,
                     progress = sleepProgress,
                     accentColor = BaroSleepBlue,
@@ -200,22 +205,27 @@ fun BaroOverviewScreen(
                 )
             }
 
-            // STRAIN GAUGE
+            // RESILIENCE GAUGE (Google Health 3-pillar resilience)
+            val resilience = state.resilience
+            val resilienceLevel = resilience?.levelLabel ?: "Low"
+            val resilienceProg = when (resilienceLevel) {
+                "Optimal" -> 1.0f
+                "Moderate", "Typical" -> 0.65f
+                "Low" -> 0.35f
+                else -> 0.35f
+            }
             Column(
                 horizontalAlignment = Alignment.CenterHorizontally,
-                modifier = Modifier.clickable { onOpenTab(VayuTab.ACTIVITY) }
+                modifier = Modifier.clickable { viewModel.openMetricDetail(MetricDetailType.RESILIENCE) }
             ) {
-                val strainScore = zoneMinutes?.let { (it / 1.5).toInt().coerceIn(0, 100) }
-                val strainStr = strainScore?.toString() ?: "—"
-                val strainProg = strainScore?.let { it / 100f }
                 BaroCircleGauge(
-                    label = "STRAIN",
-                    valueText = strainStr,
-                    progress = strainProg,
-                    accentColor = BaroStrainBlue,
+                    label = "RESILIENCE",
+                    valueText = resilienceLevel,
+                    progress = resilienceProg,
+                    accentColor = Color(0xFF8A70D6),
                     size = 106.dp,
                     strokeWidth = 10.dp,
-                    showNeedleTick = strainProg != null
+                    showNeedleTick = true
                 )
             }
         }
@@ -312,7 +322,7 @@ fun BaroOverviewScreen(
                             horizontalArrangement = Arrangement.SpaceBetween,
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Text("ZONE MINUTES*", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = BaroTextSecondary, letterSpacing = 0.6.sp)
+                            Text("ZONE MINUTES", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = BaroTextSecondary, letterSpacing = 0.6.sp)
                             Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, null, tint = BaroTextMuted, modifier = Modifier.size(16.dp))
                         }
 
@@ -326,17 +336,18 @@ fun BaroOverviewScreen(
                         val dailyZones = listOf(0f, 0f, 0f, 0f, 0f, (zoneMinutes ?: 0).toFloat(), 0f)
                         BaroWeeklyBarChart(dailyValues = dailyZones, height = 44.dp, todayIndex = 5)
 
-                        val zoneSubtitle = if (zoneMinutes != null) "Active HR duration*" else "Data unavailable"
+                        val zoneSubtitle = if (zoneMinutes != null) "Active Heart Rate duration" else "Data unavailable"
                         Text(zoneSubtitle, fontSize = 9.5.sp, fontWeight = FontWeight.Medium, color = BaroTextMuted, maxLines = 1)
                     }
                 }
 
-                // Stress Card (Autonomic Ratio Model)
-                val stress = HealthDataCalculations.calculatePhysiologicalStress(hr, rhr, hrv)
+                // Calories Card (Authentic Energy Expenditure)
+                val totalCal = activity?.totalCaloriesKcal?.toInt() ?: activity?.activeCaloriesKcal?.toInt()
+                val activeCal = activity?.activeCaloriesKcal?.toInt()
                 BaroCard(
                     modifier = Modifier.weight(1f).height(156.dp),
                     padding = 16.dp,
-                    onClick = { viewModel.openMetricDetail(MetricDetailType.STRESS) }
+                    onClick = { viewModel.openMetricDetail(MetricDetailType.CALORIES) }
                 ) {
                     Column(modifier = Modifier.fillMaxSize(), verticalArrangement = Arrangement.SpaceBetween) {
                         Row(
@@ -344,17 +355,28 @@ fun BaroOverviewScreen(
                             horizontalArrangement = Arrangement.SpaceBetween,
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Text("STRESS*", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = BaroTextSecondary, letterSpacing = 0.6.sp)
+                            Text("CALORIES", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = BaroTextSecondary, letterSpacing = 0.6.sp)
                             Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, null, tint = BaroTextMuted, modifier = Modifier.size(16.dp))
                         }
 
-                        val stressValueText = stress?.let { "%.1f AVG · %s".format(it.averageScore, it.levelLabel) } ?: "—"
-                        Text(stressValueText, fontSize = 14.sp, fontWeight = FontWeight.Bold, color = BaroTextWhite)
+                        Row(verticalAlignment = Alignment.Bottom) {
+                            Text(
+                                text = totalCal?.toString() ?: "—",
+                                fontSize = 24.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = BaroTextWhite
+                            )
+                            if (totalCal != null) {
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text("kcal", fontSize = 11.sp, color = BaroTextMuted, modifier = Modifier.padding(bottom = 3.dp))
+                            }
+                        }
 
-                        BaroSpeedometer(score = stress?.averageScore, height = 44.dp)
+                        val dailyCal = listOf(0f, 0f, 0f, 0f, 0f, (totalCal ?: 0).toFloat(), 0f)
+                        BaroWeeklyBarChart(dailyValues = dailyCal, height = 44.dp, todayIndex = 5)
 
-                        val stressSubtitle = stress?.let { "HI %.1f   LO %.1f".format(it.maxScore, it.minScore) } ?: "* Autonomic Ratio"
-                        Text(stressSubtitle, fontSize = 9.5.sp, fontWeight = FontWeight.Medium, color = BaroTextMuted, maxLines = 1)
+                        val calSubtitle = if (activeCal != null && activeCal > 0) "Active: $activeCal kcal" else if (totalCal != null) "Total energy expenditure" else "No calorie records"
+                        Text(calSubtitle, fontSize = 9.5.sp, fontWeight = FontWeight.Medium, color = BaroTextMuted, maxLines = 1)
                     }
                 }
             }
@@ -433,12 +455,13 @@ fun BaroOverviewScreen(
                 )
 
                 val spo2Val = resp?.spo2Percentage
+                val cleanSpo2 = spo2Val?.let { if (it <= 1.0) it * 100.0 else it }
                 PinnedMetricCard(
                     title = "SPO2",
-                    value = spo2Val?.let { "%.0f".format(it) } ?: "—",
-                    unit = if (spo2Val != null) "%" else null,
+                    value = cleanSpo2?.let { "%.0f".format(it) } ?: "—",
+                    unit = if (cleanSpo2 != null) "%" else null,
                     icon = Icons.Default.Timeline,
-                    status = if (spo2Val != null) RangeStatus.TYPICAL else RangeStatus.UNAVAILABLE,
+                    status = if (cleanSpo2 != null) RangeStatus.TYPICAL else RangeStatus.UNAVAILABLE,
                     onClick = { viewModel.openMetricDetail(MetricDetailType.SPO2) },
                     modifier = Modifier.weight(1f)
                 )

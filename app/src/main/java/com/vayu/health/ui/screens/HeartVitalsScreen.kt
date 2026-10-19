@@ -59,6 +59,8 @@ fun HeartVitalsScreen(
     modifier: Modifier = Modifier
 ) {
     val scrollState = rememberScrollState()
+    val selectedDate by viewModel.selectedDate.collectAsState()
+    val isToday = !selectedDate.isBefore(java.time.LocalDate.now())
 
     val hr = state.heartRate
     val rhr = state.restingHeartRate
@@ -97,9 +99,15 @@ fun HeartVitalsScreen(
                 Text(viewModel.getBaroHeaderDate(), fontSize = 17.sp, fontWeight = FontWeight.Bold, color = BaroTextWhite)
                 androidx.compose.material3.IconButton(
                     onClick = { viewModel.selectNextDay() },
+                    enabled = !isToday,
                     modifier = Modifier.size(32.dp)
                 ) {
-                    Icon(Icons.Default.ChevronRight, "Next Day", tint = BaroTextMuted, modifier = Modifier.size(20.dp))
+                    Icon(
+                        imageVector = Icons.Default.ChevronRight,
+                        contentDescription = "Next Day",
+                        tint = if (isToday) BaroTextMuted.copy(alpha = 0.25f) else BaroTextMuted,
+                        modifier = Modifier.size(20.dp)
+                    )
                 }
             }
 
@@ -169,7 +177,7 @@ fun HeartVitalsScreen(
         )
         BaroCard(modifier = Modifier.fillMaxWidth()) {
             Column {
-                Text("TIME IN ZONES*", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = BaroTextSecondary, letterSpacing = 0.8.sp)
+                Text("TIME IN ZONES", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = BaroTextSecondary, letterSpacing = 0.8.sp)
                 Spacer(modifier = Modifier.height(12.dp))
 
                 val z4Text = if (zoneBreakdown.totalMinutes > 0) "${zoneBreakdown.zone4Minutes} min" else "—"
@@ -189,7 +197,7 @@ fun HeartVitalsScreen(
                 Spacer(modifier = Modifier.height(10.dp))
 
                 Text(
-                    "* Calculated from timestamped sample intervals and individualized Heart Rate Reserve.",
+                    "Calculated from timestamped sample intervals and individualized Heart Rate Reserve.",
                     fontSize = 11.sp,
                     color = BaroTextMuted,
                     lineHeight = 15.sp

@@ -1575,7 +1575,8 @@ fun SleepHistory7DaysCard(state: HealthDashboardState, onClick: () -> Unit) {
 @Composable
 fun RespiratoryAndTempCard(state: HealthDashboardState, onClick: () -> Unit) {
     val resp = state.respiratory
-    val spo2 = resp?.spo2Percentage
+    val rawSpo2 = resp?.spo2Percentage
+    val spo2 = rawSpo2?.let { if (it <= 1.0) it * 100.0 else it }
     val skinTemp = resp?.skinTemperature
 
     Row(

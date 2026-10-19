@@ -48,6 +48,8 @@ fun ActivityScreen(
     modifier: Modifier = Modifier
 ) {
     val scrollState = rememberScrollState()
+    val selectedDate by viewModel.selectedDate.collectAsState()
+    val isToday = !selectedDate.isBefore(java.time.LocalDate.now())
     val activity = state.activity
 
     val stepCount = activity?.steps
@@ -90,9 +92,15 @@ fun ActivityScreen(
                 Text(viewModel.getBaroHeaderDate(), fontSize = 17.sp, fontWeight = FontWeight.Bold, color = BaroTextWhite)
                 androidx.compose.material3.IconButton(
                     onClick = { viewModel.selectNextDay() },
+                    enabled = !isToday,
                     modifier = Modifier.size(32.dp)
                 ) {
-                    Icon(Icons.Default.ChevronRight, "Next Day", tint = BaroTextMuted, modifier = Modifier.size(20.dp))
+                    Icon(
+                        imageVector = Icons.Default.ChevronRight,
+                        contentDescription = "Next Day",
+                        tint = if (isToday) BaroTextMuted.copy(alpha = 0.25f) else BaroTextMuted,
+                        modifier = Modifier.size(20.dp)
+                    )
                 }
             }
 
@@ -221,9 +229,9 @@ fun ActivityScreen(
 
             val zoneStr = zoneMinutes?.let { "$it min" } ?: "—"
             ActivityMetricTile(
-                title = "ZONE MINUTES*",
+                title = "ZONE MINUTES",
                 value = zoneStr,
-                subtitle = "Pulse-based duration*",
+                subtitle = "Active Pulse duration",
                 icon = Icons.Default.Timer,
                 accent = BaroReadinessTeal,
                 modifier = Modifier.weight(1f)

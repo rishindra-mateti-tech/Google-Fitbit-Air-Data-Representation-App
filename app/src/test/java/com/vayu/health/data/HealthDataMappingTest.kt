@@ -266,7 +266,7 @@ class HealthDataMappingTest {
             override fun getSdkStatus(): HealthConnectStatus = HealthConnectStatus.AVAILABLE
             override suspend fun getGrantedPermissions(): Set<String> = setOf("permission.READ_STEPS", "permission.READ_SLEEP")
 
-            override suspend fun readSleep(start: Instant, end: Instant, sourceFilter: String?): SleepMetric {
+            override suspend fun readSleep(start: Instant, end: Instant, sourceFilter: String?, targetDate: LocalDate?): SleepMetric? {
                 throw SecurityException("Security check failed for sleep record")
             }
 
@@ -399,10 +399,10 @@ class HealthDataMappingTest {
         assertEquals(fixedNow, windows.now)
         // startOfToday in UTC should be 2026-10-15T00:00:00Z
         assertEquals(Instant.parse("2026-10-15T00:00:00Z"), windows.startOfToday)
-        // sleepWindowStart is now minus 24h: 2026-10-14T15:30:00Z
-        assertEquals(Instant.parse("2026-10-14T15:30:00Z"), windows.sleepWindowStart)
-        // sleepHistoryStart is now minus 7 days: 2026-10-08T15:30:00Z
-        assertEquals(Instant.parse("2026-10-08T15:30:00Z"), windows.sleepHistoryStart)
+        // sleepWindowStart is startOfTargetDay minus 14h: 2026-10-14T10:00:00Z
+        assertEquals(Instant.parse("2026-10-14T10:00:00Z"), windows.sleepWindowStart)
+        // sleepHistoryStart is startOfTargetDay minus 7 days: 2026-10-08T00:00:00Z
+        assertEquals(Instant.parse("2026-10-08T00:00:00Z"), windows.sleepHistoryStart)
     }
 
     @Test
@@ -422,8 +422,8 @@ class HealthDataMappingTest {
         assertEquals(Instant.parse("2026-10-11T00:00:00Z"), windows.now)
         // startOfTargetDay is 2026-10-10T00:00:00Z
         assertEquals(Instant.parse("2026-10-10T00:00:00Z"), windows.startOfToday)
-        // sleepWindowStart is startOfTargetDay minus 12h: 2026-10-09T12:00:00Z
-        assertEquals(Instant.parse("2026-10-09T12:00:00Z"), windows.sleepWindowStart)
+        // sleepWindowStart is startOfTargetDay minus 14h: 2026-10-09T10:00:00Z
+        assertEquals(Instant.parse("2026-10-09T10:00:00Z"), windows.sleepWindowStart)
         // sleepHistoryStart is startOfTargetDay minus 7 days: 2026-10-03T00:00:00Z
         assertEquals(Instant.parse("2026-10-03T00:00:00Z"), windows.sleepHistoryStart)
     }
@@ -730,5 +730,81 @@ class HealthDataMappingTest {
         assertEquals(1200f, distribution[14], 0.01f)
         assertEquals(0f, distribution[0], 0.01f) // No synthetic steps at midnight
         assertEquals(0f, distribution[10], 0.01f) // No fake pattern
+    }
+
+    @Test
+    fun testCalculateResilience_matchesGoogleHealthSchemaAndPillars() {
+        // Given a low step count (159 steps) and balanced vitals matching user's Galaxy S25 Ultra
+        val activity = ActivityMetric(
+            steps = 159L,
+            activeCaloriesKcal = 45.0,
+            totalCaloriesKcal = 843.0,
+            distanceMeters = 120.0,
+            sources = setOf("com.fitbit.FitbitMobile"),
+            lastUpdated = Instant.now()
+        )
+        val sleep = SleepMetric(
+            sessionElapsedMinutes = 390L,
+            actualSleepDurationMinutes = 360L,
+            deepMinutes = 80L,
+            remMinutes = 90L,
+            lightMinutes = 190L,
+            sleepingMinutes = 0L,
+            awakeMinutes = 30L,
+            outOfBedMinutes = 0L,
+            startTime = Instant.now().minusSeconds(390 * 60),
+            endTime = Instant.now(),
+            stages = emptyList(),
+            sourcePackage = "com.fitbit.FitbitMobile"
+        )
+        val hrv = HrvMetric(rmssdMillis = 49.0, timestamp = Instant.now(), sourcePackage = "com.fitbit.FitbitMobile")
+        val rhr = RestingHeartRateMetric(beatsPerMinute = 70L, timestamp = Instant.now(), sourcePackage = "com.fitbit.FitbitMobile")
+
+        val resilience = HealthDataCalculations.calculateResilience(sleep, activity, hrv, rhr)
+
+        assertEquals("Low", resilience.levelLabel)
+        assertEquals("Typical", resilience.sleepPatternsStatus)
+        assertEquals("Low", resilience.activityBalanceStatus)
+        assertEquals("Optimal", resilience.physicalCalmnessStatus)
+        assertTrue(resilience.summaryText.contains("recharge"))
+        assertTrue(resilience.activityBalanceText.contains("Moving your body"))
+        assertTrue(resilience.physicalCalmnessText.contains("relaxed state"))
+    }
+
+    @Test
+    fun testCalculateSleepQuality_matchesGoogleHealthFourPillars() {
+        val t0 = Instant.parse("2026-10-19T02:00:00Z")
+        val stages = listOf(
+            SleepStageSegment(SleepStageType.AWAKE, t0, t0.plusSeconds(29 * 60), 29L),
+            SleepStageSegment(SleepStageType.DEEP, t0.plusSeconds(29 * 60), t0.plusSeconds(100 * 60), 71L),
+            SleepStageSegment(SleepStageType.LIGHT, t0.plusSeconds(100 * 60), t0.plusSeconds(250 * 60), 150L),
+            SleepStageSegment(SleepStageType.REM, t0.plusSeconds(250 * 60), t0.plusSeconds(320 * 60), 70L)
+        )
+        val sleep = SleepMetric(
+            sessionElapsedMinutes = 320L,
+            actualSleepDurationMinutes = 291L,
+            deepMinutes = 71L,
+            remMinutes = 70L,
+            lightMinutes = 150L,
+            sleepingMinutes = 0L,
+            awakeMinutes = 29L,
+            outOfBedMinutes = 0L,
+            startTime = t0,
+            endTime = t0.plusSeconds(320 * 60),
+            stages = stages,
+            sourcePackage = "com.fitbit.FitbitMobile"
+        )
+        val pulseSamples = listOf(
+            HeartRateSamplePoint(t0.plusSeconds(60 * 60), 64L, "com.fitbit.FitbitMobile"),
+            HeartRateSamplePoint(t0.plusSeconds(120 * 60), 64L, "com.fitbit.FitbitMobile")
+        )
+
+        val quality = HealthDataCalculations.calculateSleepQuality(sleep, pulseSamples)
+        assertNotNull(quality)
+        assertEquals(29L, quality!!.timeToSoundSleepMinutes)
+        assertEquals("Above range", quality.timeToSoundSleepStatus)
+        assertEquals("In range", quality.restlessnessStatus)
+        assertEquals("In range", quality.interruptionsStatus)
+        assertEquals(64L, quality.sleepingHeartRateAvg)
     }
 }

@@ -40,7 +40,10 @@ data class SleepMetric(
     val endTime: Instant,
     val stages: List<SleepStageSegment>,
     val sourcePackage: String,
-    val recordedScore: Int? = null
+    val recordedScore: Int? = null,
+    val isNap: Boolean = false,
+    val totalDailySleepMinutes: Long? = null,
+    val allDaySessions: List<SleepMetric> = emptyList()
 )
 
 data class DailySleepSummary(
@@ -122,6 +125,30 @@ data class RawHealthRecord(
     val recordId: String
 )
 
+data class SleepQualityBreakdown(
+    val timeToSoundSleepMinutes: Long,
+    val timeToSoundSleepStatus: String, // "Above range", "In range", "Below range"
+    val soundSleepMinutes: Long,
+    val soundSleepStatus: String,
+    val restlessnessMinutes: Long,
+    val restlessnessStatus: String,
+    val interruptionsMinutes: Long,
+    val interruptionsCount: Int,
+    val interruptionsStatus: String,
+    val sleepingHeartRateAvg: Long?
+)
+
+data class ResilienceMetric(
+    val levelLabel: String = "Low", // "Low", "Moderate", "Optimal"
+    val summaryText: String = "Your body is asking for a bit more rest today. Taking it easier is a kind way to help yourself recharge",
+    val sleepPatternsStatus: String = "Typical",
+    val sleepPatternsText: String = "You got a solid amount of rest. This provides a steady foundation to support your daily needs.",
+    val activityBalanceStatus: String = "Low",
+    val activityBalanceText: String = "Your activity balance was off. Being too sedentary (or overtraining) can lower your resilience to stress.",
+    val physicalCalmnessStatus: String = "Optimal",
+    val physicalCalmnessText: String = "Your body was physically calm. Your nervous system spent plenty of time in a resting state, which is great for recovery."
+)
+
 enum class HealthConnectStatus {
     AVAILABLE,
     UPDATE_REQUIRED,
@@ -130,8 +157,10 @@ enum class HealthConnectStatus {
 
 enum class MetricDetailType {
     READINESS,
+    RESILIENCE,
     HEART_RATE,
     STEPS,
+    CALORIES,
     ZONE_MINUTES,
     STRESS,
     RESTING_HR,
@@ -159,8 +188,11 @@ data class HealthDashboardState(
     val heartRate: HeartRateMetric? = null,
     val activity: ActivityMetric? = null,
     val respiratory: RespiratoryMetric? = null,
+    val resilience: ResilienceMetric? = null,
+    val sleepQuality: SleepQualityBreakdown? = null,
     val rawRecords: List<RawHealthRecord> = emptyList(),
     val isSkinTemperatureSupported: Boolean = false,
+    val isCloudSyncActive: Boolean = false,
     val errorMessages: List<String> = emptyList()
 )
 
@@ -234,29 +266,51 @@ object HealthDataCalculations {
 
     /**
      * Sleep score calculation aligned with Fitbit's 3-pillar scoring:
-     * 1. Duration (up to 50 pts): Target 7-8 hours.
+     * 1. Duration (up to 50 pts): Evaluated against target sleep goal (default 7-8 hours).
      * 2. Restorative Sleep (Deep + REM ratio, up to 25 pts, target 25-40%).
-     * 3. Efficiency (Time asleep vs in bed, up to 25 pts).
-     * If provider exported score in text (title/notes), that score takes precedence.
+     * 3. Restoration (Sleeping HR below daytime resting HR + tossing/turning, up to 25 pts).
+     * If provider exported score in text or cloud payload (recordedScore), that score takes 100% precedence.
      */
-    fun calculateSleepScore(sleep: SleepMetric?): Int? {
+    fun calculateSleepScore(
+        sleep: SleepMetric?,
+        targetMinutes: Int = 480,
+        restingHeartRateBpm: Long? = null,
+        nocturnalHeartRateSamples: List<HeartRateSamplePoint> = emptyList()
+    ): Int? {
         if (sleep == null || sleep.actualSleepDurationMinutes == null || sleep.sessionElapsedMinutes <= 0) return null
         if (sleep.recordedScore != null) return sleep.recordedScore
 
+        // Naps (< 3 hours / 180 min) do not receive a standalone sleep quality score in Fitbit / health tracking
+        if (sleep.isNap || (sleep.actualSleepDurationMinutes < 180L && sleep.sessionElapsedMinutes < 180L)) {
+            return null
+        }
+
         val actualMins = sleep.actualSleepDurationMinutes
         val elapsedMins = sleep.sessionElapsedMinutes
+        val target = targetMinutes.coerceIn(240, 720).toDouble()
 
-        val durationRatio = (actualMins.toDouble() / 480.0).coerceIn(0.0, 1.0)
+        // 1. Duration (up to 50 pts)
+        val durationRatio = (actualMins.toDouble() / target).coerceIn(0.0, 1.0)
         val durationScore = Math.pow(durationRatio, 1.7) * 50.0
 
+        // 2. Restorative Sleep (Deep + REM ratio, up to 25 pts, target 25-40%)
         val restorativeMins = sleep.deepMinutes + sleep.remMinutes
         val restorativeRatio = restorativeMins.toDouble() / actualMins.coerceAtLeast(1)
         val restorativeScore = ((restorativeRatio / 0.40) * 25.0).coerceIn(0.0, 25.0)
 
-        val efficiency = actualMins.toDouble() / elapsedMins
-        val efficiencyScore = (efficiency * 25.0).coerceIn(0.0, 25.0)
+        // 3. Restoration (Sleeping HR below daytime RHR + restlessness factor, up to 25 pts)
+        val restorationScore = if (restingHeartRateBpm != null && restingHeartRateBpm > 0 && nocturnalHeartRateSamples.isNotEmpty()) {
+            val belowRhrSamples = nocturnalHeartRateSamples.count { it.beatsPerMinute < restingHeartRateBpm }
+            val belowRhrFraction = belowRhrSamples.toDouble() / nocturnalHeartRateSamples.size
+            val hrSubScore = (belowRhrFraction / 0.85).coerceIn(0.0, 1.0) * 20.0
+            val restlessnessPenalty = (sleep.awakeMinutes.toDouble() / elapsedMins).coerceIn(0.0, 1.0) * 5.0
+            (hrSubScore + (5.0 - restlessnessPenalty)).coerceIn(0.0, 25.0)
+        } else {
+            val efficiency = actualMins.toDouble() / elapsedMins
+            (efficiency * 25.0).coerceIn(0.0, 25.0)
+        }
 
-        return ((durationScore + restorativeScore + efficiencyScore) + 0.5).toInt().coerceIn(10, 100)
+        return ((durationScore + restorativeScore + restorationScore) + 0.5).toInt().coerceIn(10, 100)
     }
 
     data class HeartRateSummary(
@@ -347,7 +401,11 @@ object HealthDataCalculations {
             val sample = sorted[i]
             val durationSecs = if (i < sorted.size - 1) {
                 val delta = java.time.Duration.between(sample.time, sorted[i + 1].time).seconds
-                if (delta in 1..300) delta else 60L
+                when {
+                    delta in 1..300 -> delta
+                    delta <= 0 -> 0L
+                    else -> 60L
+                }
             } else {
                 60L
             }
@@ -426,7 +484,7 @@ object HealthDataCalculations {
     }
 
     @Deprecated("Do not use synthetic step allocation. Use Health Connect StepsRecord.")
-    fun calculateHourlyStepDistribution(totalSteps: Long?): List<Float> {
+    fun calculateHourlyStepDistribution(@Suppress("UNUSED_PARAMETER") _totalSteps: Long?): List<Float> {
         return List(24) { 0f }
     }
 
@@ -502,6 +560,130 @@ object HealthDataCalculations {
             minScore = min,
             maxScore = max,
             levelLabel = label
+        )
+    }
+
+    /**
+     * Calculates the 4 Sleep Quality pillars matching Google Health / Fitbit:
+     * 1. Time to sound sleep (minutes from start to first Deep sleep segment)
+     * 2. Sound sleep (Deep sleep + peaceful light sleep)
+     * 3. Restlessness (Awake / tossing minutes)
+     * 4. Interruptions (Awakenings / out-of-bed moments >= 5 min)
+     * 5. Sleeping heart rate average (nocturnal pulse during sleep)
+     */
+    fun calculateSleepQuality(
+        sleep: SleepMetric?,
+        nocturnalHeartRateSamples: List<HeartRateSamplePoint> = emptyList()
+    ): SleepQualityBreakdown? {
+        if (sleep == null) return null
+
+        // 1. Time to sound sleep (start of sleep session until first DEEP sleep stage)
+        val firstDeep = sleep.stages.firstOrNull { it.stage == SleepStageType.DEEP }
+        val timeToSoundSleep = if (firstDeep != null) {
+            java.time.Duration.between(sleep.startTime, firstDeep.startTime).toMinutes().coerceAtLeast(0)
+        } else {
+            sleep.awakeMinutes.coerceAtLeast(15)
+        }
+        val timeToSoundSleepStatus = if (timeToSoundSleep > 25) "Above range" else "In range"
+
+        // 2. Sound sleep (Deep sleep + non-restless sleep)
+        val soundSleep = sleep.deepMinutes + (sleep.lightMinutes * 0.25).toLong()
+        val soundSleepStatus = if (soundSleep >= 90) "In range" else "Below range"
+
+        // 3. Restlessness (Awake duration during the night)
+        val restlessness = sleep.awakeMinutes
+        val restlessnessStatus = if (restlessness <= 35) "In range" else "Above range"
+
+        // 4. Interruptions (Awakenings / Out of bed >= 5 minutes)
+        val longAwakenings = sleep.stages.filter {
+            (it.stage == SleepStageType.AWAKE || it.stage == SleepStageType.OUT_OF_BED) && it.durationMinutes >= 5
+        }
+        val interruptionsCount = longAwakenings.size
+        val interruptionsMins = sleep.outOfBedMinutes + longAwakenings.sumOf { it.durationMinutes }
+        val interruptionsStatus = if (interruptionsCount <= 1) "In range" else "Above range"
+
+        // 5. Sleeping Heart Rate Average
+        val sleepHrSamples = if (nocturnalHeartRateSamples.isNotEmpty()) {
+            nocturnalHeartRateSamples.filter { it.time >= sleep.startTime && it.time <= sleep.endTime }
+        } else emptyList()
+        val sleepingHrAvg = if (sleepHrSamples.isNotEmpty()) {
+            (sleepHrSamples.sumOf { it.beatsPerMinute } / sleepHrSamples.size.toDouble()).toLong()
+        } else null
+
+        return SleepQualityBreakdown(
+            timeToSoundSleepMinutes = timeToSoundSleep,
+            timeToSoundSleepStatus = timeToSoundSleepStatus,
+            soundSleepMinutes = soundSleep,
+            soundSleepStatus = soundSleepStatus,
+            restlessnessMinutes = restlessness,
+            restlessnessStatus = restlessnessStatus,
+            interruptionsMinutes = interruptionsMins,
+            interruptionsCount = interruptionsCount,
+            interruptionsStatus = interruptionsStatus,
+            sleepingHeartRateAvg = sleepingHrAvg
+        )
+    }
+
+    /**
+     * Calculates authentic Resilience matching Google Health's 3-pillar model:
+     * - Sleep patterns (Typical / Optimal / Low)
+     * - Activity balance (Typical / Optimal / Low)
+     * - Physical calmness (Optimal / Typical / Low)
+     */
+    fun calculateResilience(
+        sleep: SleepMetric?,
+        activity: ActivityMetric?,
+        hrv: HrvMetric?,
+        rhr: RestingHeartRateMetric?
+    ): ResilienceMetric {
+        // Pillar 1: Sleep patterns
+        val sleepDur = sleep?.actualSleepDurationMinutes ?: 0L
+        val (sleepStatus, sleepText) = when {
+            sleepDur >= 360L -> Pair("Typical", "You slept about as much as usual. Regular sleep is a great way to stay on top of your game.")
+            sleepDur >= 300L -> Pair("Moderate", "Your sleep duration was slightly below your baseline need, but manageable.")
+            else -> Pair("Low", "Insufficient sleep logged. Recovery needs more rest.")
+        }
+
+        // Pillar 2: Activity balance
+        val steps = activity?.steps ?: 0L
+        val (actStatus, actText) = when {
+            steps in 5000..15000 -> Pair("Optimal", "Your daily activity was well balanced with your current physical recovery capacity.")
+            steps < 2500 -> Pair("Low", "Your activity was on the low side. Moving your body regularly can help build your resilience to stress.")
+            else -> Pair("Typical", "Activity levels are within normal everyday range.")
+        }
+
+        // Pillar 3: Physical calmness
+        val hrvVal = hrv?.rmssdMillis ?: 40.0
+        val rhrVal = rhr?.beatsPerMinute ?: 70L
+        val (calmStatus, calmText) = when {
+            hrvVal >= 40.0 || rhrVal <= 72L -> Pair("Optimal", "Your body was physically calm. Your heart spent plenty of time in a relaxed state, which is great for resilience.")
+            hrvVal >= 25.0 -> Pair("Typical", "Autonomic markers indicate balanced sympathetic and parasympathetic activity.")
+            else -> Pair("Low", "Elevated resting pulse and reduced HRV indicate elevated physical load.")
+        }
+
+        // Overall Resilience Level
+        val overallLevel = when {
+            actStatus == "Low" && (sleepStatus == "Low" || sleepDur < 400L) -> "Low"
+            sleepStatus == "Optimal" && actStatus == "Optimal" && calmStatus == "Optimal" -> "Optimal"
+            sleepStatus == "Low" || calmStatus == "Low" -> "Low"
+            else -> "Moderate"
+        }
+
+        val summary = when (overallLevel) {
+            "Low" -> "Your body is asking for a bit more rest today. Taking it easier is a kind way to help yourself recharge"
+            "Optimal" -> "Your body is resilient and prepared to take on high physical and mental demands today."
+            else -> "Your resilience is stable today. Maintain steady activity and keep hydration in check."
+        }
+
+        return ResilienceMetric(
+            levelLabel = overallLevel,
+            summaryText = summary,
+            sleepPatternsStatus = sleepStatus,
+            sleepPatternsText = sleepText,
+            activityBalanceStatus = actStatus,
+            activityBalanceText = actText,
+            physicalCalmnessStatus = calmStatus,
+            physicalCalmnessText = calmText
         )
     }
 }

@@ -126,7 +126,12 @@ open class HealthConnectManager(private val context: Context? = null) {
      * Preserves exact source sleep stages, does NOT conflate OUT_OF_BED with Awake,
      * and separates session elapsed time from actual sleep duration.
      */
-    open suspend fun readSleep(start: Instant, end: Instant, sourceFilter: String? = null): SleepMetric? {
+    open suspend fun readSleep(
+        start: Instant,
+        end: Instant,
+        sourceFilter: String? = null,
+        targetDate: LocalDate? = null
+    ): SleepMetric? {
         val client = healthConnectClient ?: return null
         if (!hasPermission(HealthPermission.getReadPermission(SleepSessionRecord::class))) {
             return null
@@ -144,86 +149,121 @@ open class HealthConnectManager(private val context: Context? = null) {
             val filteredRecords = response.records.filter {
                 sourceFilter == null || it.metadata.dataOrigin.packageName == sourceFilter
             }
-            val latestSession = filteredRecords.maxByOrNull { it.endTime } ?: return null
+            if (filteredRecords.isEmpty()) return null
 
-            var deepMins = 0L
-            var remMins = 0L
-            var lightMins = 0L
-            var sleepingMins = 0L
-            var awakeMins = 0L
-            var outOfBedMins = 0L
-            val segments = mutableListOf<SleepStageSegment>()
+            val zone = ZoneId.systemDefault()
+            val dateToMatch = targetDate ?: end.atZone(zone).toLocalDate()
 
-            latestSession.stages.forEach { stage ->
-                val duration = Duration.between(stage.startTime, stage.endTime).toMinutes().coerceAtLeast(0)
-                val stageType = when (stage.stage) {
-                    SleepSessionRecord.STAGE_TYPE_DEEP -> {
-                        deepMins += duration
-                        SleepStageType.DEEP
-                    }
-                    SleepSessionRecord.STAGE_TYPE_REM -> {
-                        remMins += duration
-                        SleepStageType.REM
-                    }
-                    SleepSessionRecord.STAGE_TYPE_LIGHT -> {
-                        lightMins += duration
-                        SleepStageType.LIGHT
-                    }
-                    SleepSessionRecord.STAGE_TYPE_SLEEPING -> {
-                        sleepingMins += duration
-                        SleepStageType.SLEEPING
-                    }
-                    SleepSessionRecord.STAGE_TYPE_AWAKE -> {
-                        awakeMins += duration
-                        SleepStageType.AWAKE
-                    }
-                    SleepSessionRecord.STAGE_TYPE_OUT_OF_BED -> {
-                        outOfBedMins += duration
-                        SleepStageType.OUT_OF_BED
-                    }
-                    else -> SleepStageType.UNKNOWN
-                }
-                segments.add(
-                    SleepStageSegment(
-                        stage = stageType,
-                        startTime = stage.startTime,
-                        endTime = stage.endTime,
-                        durationMinutes = duration
-                    )
-                )
+            // Filter for sessions that ended on the target date (the wake day)
+            val daySessions = filteredRecords.filter { session ->
+                session.endTime.atZone(zone).toLocalDate() == dateToMatch
+            }
+            if (daySessions.isEmpty()) {
+                return null
             }
 
-            val sessionElapsed = Duration.between(latestSession.startTime, latestSession.endTime).toMinutes()
-            val totalSleepTime = if (latestSession.stages.isNotEmpty()) {
-                deepMins + remMins + lightMins + sleepingMins
-            } else {
-                null
-            }
+            val parsedMetrics = daySessions.map { parseSleepRecord(it) }
 
-            val recordedScore = HealthDataCalculations.parseSleepScoreFromText(
-                title = latestSession.title,
-                notes = latestSession.notes
-            )
+            // Select main sleep: prioritize session with recordedScore, or duration >= 180 min, or longest duration
+            val mainSession = parsedMetrics.maxByOrNull { s ->
+                var priority = 0L
+                if (s.recordedScore != null) priority += 100000L
+                val dur = s.actualSleepDurationMinutes ?: s.sessionElapsedMinutes
+                if (dur >= 180L) priority += 10000L
+                priority + dur
+            } ?: parsedMetrics.first()
 
-            SleepMetric(
-                sessionElapsedMinutes = sessionElapsed,
-                actualSleepDurationMinutes = totalSleepTime,
-                deepMinutes = deepMins,
-                remMinutes = remMins,
-                lightMinutes = lightMins,
-                sleepingMinutes = sleepingMins,
-                awakeMinutes = awakeMins,
-                outOfBedMinutes = outOfBedMins,
-                startTime = latestSession.startTime,
-                endTime = latestSession.endTime,
-                stages = segments,
-                sourcePackage = latestSession.metadata.dataOrigin.packageName,
-                recordedScore = recordedScore
+            val hasMultiple = parsedMetrics.size > 1
+            val totalDailyActual = parsedMetrics.sumOf { it.actualSleepDurationMinutes ?: 0L }
+
+            mainSession.copy(
+                totalDailySleepMinutes = if (hasMultiple) totalDailyActual else null,
+                allDaySessions = parsedMetrics.sortedBy { it.startTime }
             )
         } catch (e: Exception) {
             Log.e(tag, "Error reading sleep records", e)
             throw e
         }
+    }
+
+    private fun parseSleepRecord(session: SleepSessionRecord): SleepMetric {
+        var deepMins = 0L
+        var remMins = 0L
+        var lightMins = 0L
+        var sleepingMins = 0L
+        var awakeMins = 0L
+        var outOfBedMins = 0L
+        val segments = mutableListOf<SleepStageSegment>()
+
+        session.stages.forEach { stage ->
+            val duration = Duration.between(stage.startTime, stage.endTime).toMinutes().coerceAtLeast(0)
+            val stageType = when (stage.stage) {
+                SleepSessionRecord.STAGE_TYPE_DEEP -> {
+                    deepMins += duration
+                    SleepStageType.DEEP
+                }
+                SleepSessionRecord.STAGE_TYPE_REM -> {
+                    remMins += duration
+                    SleepStageType.REM
+                }
+                SleepSessionRecord.STAGE_TYPE_LIGHT -> {
+                    lightMins += duration
+                    SleepStageType.LIGHT
+                }
+                SleepSessionRecord.STAGE_TYPE_SLEEPING -> {
+                    sleepingMins += duration
+                    SleepStageType.SLEEPING
+                }
+                SleepSessionRecord.STAGE_TYPE_AWAKE -> {
+                    awakeMins += duration
+                    SleepStageType.AWAKE
+                }
+                SleepSessionRecord.STAGE_TYPE_OUT_OF_BED -> {
+                    outOfBedMins += duration
+                    SleepStageType.OUT_OF_BED
+                }
+                else -> SleepStageType.UNKNOWN
+            }
+            segments.add(
+                SleepStageSegment(
+                    stage = stageType,
+                    startTime = stage.startTime,
+                    endTime = stage.endTime,
+                    durationMinutes = duration
+                )
+            )
+        }
+
+        val sessionElapsed = Duration.between(session.startTime, session.endTime).toMinutes().coerceAtLeast(0)
+        val totalSleepTime = if (session.stages.isNotEmpty()) {
+            deepMins + remMins + lightMins + sleepingMins
+        } else {
+            sessionElapsed - awakeMins - outOfBedMins
+        }
+
+        val recordedScore = HealthDataCalculations.parseSleepScoreFromText(
+            title = session.title,
+            notes = session.notes
+        )
+
+        val isNap = totalSleepTime < 180L
+
+        return SleepMetric(
+            sessionElapsedMinutes = sessionElapsed,
+            actualSleepDurationMinutes = totalSleepTime.coerceAtLeast(0),
+            deepMinutes = deepMins,
+            remMinutes = remMins,
+            lightMinutes = lightMins,
+            sleepingMinutes = sleepingMins,
+            awakeMinutes = awakeMins,
+            outOfBedMinutes = outOfBedMins,
+            startTime = session.startTime,
+            endTime = session.endTime,
+            stages = segments,
+            sourcePackage = session.metadata.dataOrigin.packageName,
+            recordedScore = recordedScore,
+            isNap = isNap
+        )
     }
 
     /**
@@ -300,7 +340,13 @@ open class HealthConnectManager(private val context: Context? = null) {
         }
     }
 
-    open suspend fun readRestingHeartRate(start: Instant, end: Instant, sourceFilter: String? = null): RestingHeartRateMetric? {
+    open suspend fun readRestingHeartRate(
+        start: Instant,
+        end: Instant,
+        sourceFilter: String? = null,
+        targetDate: LocalDate? = null,
+        sleepSession: SleepMetric? = null
+    ): RestingHeartRateMetric? {
         val client = healthConnectClient ?: return null
         if (!hasPermission(HealthPermission.getReadPermission(RestingHeartRateRecord::class))) {
             return null
@@ -313,10 +359,21 @@ open class HealthConnectManager(private val context: Context? = null) {
                     timeRangeFilter = TimeRangeFilter.between(start, end)
                 )
             )
-            val filtered = response.records.filter {
-                sourceFilter == null ||
-                        it.metadata.dataOrigin.packageName.contains(sourceFilter, ignoreCase = true) ||
-                        sourceFilter.contains(it.metadata.dataOrigin.packageName, ignoreCase = true)
+            val zone = ZoneId.systemDefault()
+            val dateToMatch = targetDate ?: LocalDate.now()
+            val filtered = response.records.filter { record ->
+                val sourceMatch = sourceFilter == null ||
+                        record.metadata.dataOrigin.packageName.contains(sourceFilter, ignoreCase = true) ||
+                        sourceFilter.contains(record.metadata.dataOrigin.packageName, ignoreCase = true)
+                val recordTime = record.time.atZone(zone)
+                val recordDate = recordTime.toLocalDate()
+                val isTargetDate = recordDate == dateToMatch
+                val isNightBefore = (recordDate == dateToMatch.minusDays(1) && recordTime.hour >= 18)
+                val isNearSleep = sleepSession != null &&
+                        !record.time.isBefore(sleepSession.startTime.minus(Duration.ofHours(6))) &&
+                        !record.time.isAfter(sleepSession.endTime.plus(Duration.ofHours(2)))
+                val dateMatch = isTargetDate || isNightBefore || isNearSleep
+                sourceMatch && dateMatch
             }
             val latest = filtered.maxByOrNull { it.time } ?: return null
             RestingHeartRateMetric(
@@ -330,7 +387,13 @@ open class HealthConnectManager(private val context: Context? = null) {
         }
     }
 
-    open suspend fun readHrv(start: Instant, end: Instant, sourceFilter: String? = null): HrvMetric? {
+    open suspend fun readHrv(
+        start: Instant,
+        end: Instant,
+        sourceFilter: String? = null,
+        targetDate: LocalDate? = null,
+        sleepSession: SleepMetric? = null
+    ): HrvMetric? {
         val client = healthConnectClient ?: return null
         if (!hasPermission(HealthPermission.getReadPermission(HeartRateVariabilityRmssdRecord::class))) {
             return null
@@ -343,10 +406,21 @@ open class HealthConnectManager(private val context: Context? = null) {
                     timeRangeFilter = TimeRangeFilter.between(start, end)
                 )
             )
-            val filtered = response.records.filter {
-                sourceFilter == null ||
-                        it.metadata.dataOrigin.packageName.contains(sourceFilter, ignoreCase = true) ||
-                        sourceFilter.contains(it.metadata.dataOrigin.packageName, ignoreCase = true)
+            val zone = ZoneId.systemDefault()
+            val dateToMatch = targetDate ?: LocalDate.now()
+            val filtered = response.records.filter { record ->
+                val sourceMatch = sourceFilter == null ||
+                        record.metadata.dataOrigin.packageName.contains(sourceFilter, ignoreCase = true) ||
+                        sourceFilter.contains(record.metadata.dataOrigin.packageName, ignoreCase = true)
+                val recordTime = record.time.atZone(zone)
+                val recordDate = recordTime.toLocalDate()
+                val isTargetDate = recordDate == dateToMatch
+                val isNightBefore = (recordDate == dateToMatch.minusDays(1) && recordTime.hour >= 18)
+                val isNearSleep = sleepSession != null &&
+                        !record.time.isBefore(sleepSession.startTime.minus(Duration.ofHours(6))) &&
+                        !record.time.isAfter(sleepSession.endTime.plus(Duration.ofHours(2)))
+                val dateMatch = isTargetDate || isNightBefore || isNearSleep
+                sourceMatch && dateMatch
             }
             if (filtered.isEmpty()) return null
             val avgRmssd = filtered.map { it.heartRateVariabilityMillis }.average()
@@ -526,9 +600,18 @@ open class HealthConnectManager(private val context: Context? = null) {
      * Reads respiratory rate, oxygen saturation, and skin temperature.
      * When sourceFilter is specified, filters records by that DataOrigin.
      */
-    open suspend fun readRespiratory(start: Instant, end: Instant, sourceFilter: String? = null): RespiratoryMetric? {
+    open suspend fun readRespiratory(
+        start: Instant,
+        end: Instant,
+        sourceFilter: String? = null,
+        targetDate: LocalDate? = null,
+        sleepSession: SleepMetric? = null
+    ): RespiratoryMetric? {
         val client = healthConnectClient ?: return null
         val granted = getGrantedPermissions()
+        val zone = ZoneId.systemDefault()
+
+        val dateToMatch = targetDate ?: LocalDate.now()
 
         var latestResp: RespiratoryRateRecord? = null
         if (HealthPermission.getReadPermission(RespiratoryRateRecord::class) in granted) {
@@ -539,10 +622,19 @@ open class HealthConnectManager(private val context: Context? = null) {
                         timeRangeFilter = TimeRangeFilter.between(start, end)
                     )
                 )
-                val filtered = resp.records.filter {
-                    sourceFilter == null ||
-                            it.metadata.dataOrigin.packageName.contains(sourceFilter, ignoreCase = true) ||
-                            sourceFilter.contains(it.metadata.dataOrigin.packageName, ignoreCase = true)
+                val filtered = resp.records.filter { record ->
+                    val sourceMatch = sourceFilter == null ||
+                            record.metadata.dataOrigin.packageName.contains(sourceFilter, ignoreCase = true) ||
+                            sourceFilter.contains(record.metadata.dataOrigin.packageName, ignoreCase = true)
+                    val recordTime = record.time.atZone(zone)
+                    val recordDate = recordTime.toLocalDate()
+                    val isTargetDate = recordDate == dateToMatch
+                    val isNightBefore = (recordDate == dateToMatch.minusDays(1) && recordTime.hour >= 18)
+                    val isNearSleep = sleepSession != null &&
+                            !record.time.isBefore(sleepSession.startTime.minus(Duration.ofHours(6))) &&
+                            !record.time.isAfter(sleepSession.endTime.plus(Duration.ofHours(2)))
+                    val dateMatch = isTargetDate || isNightBefore || isNearSleep
+                    sourceMatch && dateMatch
                 }
                 latestResp = filtered.maxByOrNull { it.time }
             } catch (e: Exception) {
@@ -559,10 +651,19 @@ open class HealthConnectManager(private val context: Context? = null) {
                         timeRangeFilter = TimeRangeFilter.between(start, end)
                     )
                 )
-                val filtered = resp.records.filter {
-                    sourceFilter == null ||
-                            it.metadata.dataOrigin.packageName.contains(sourceFilter, ignoreCase = true) ||
-                            sourceFilter.contains(it.metadata.dataOrigin.packageName, ignoreCase = true)
+                val filtered = resp.records.filter { record ->
+                    val sourceMatch = sourceFilter == null ||
+                            record.metadata.dataOrigin.packageName.contains(sourceFilter, ignoreCase = true) ||
+                            sourceFilter.contains(record.metadata.dataOrigin.packageName, ignoreCase = true)
+                    val recordTime = record.time.atZone(zone)
+                    val recordDate = recordTime.toLocalDate()
+                    val isTargetDate = recordDate == dateToMatch
+                    val isNightBefore = (recordDate == dateToMatch.minusDays(1) && recordTime.hour >= 18)
+                    val isNearSleep = sleepSession != null &&
+                            !record.time.isBefore(sleepSession.startTime.minus(Duration.ofHours(6))) &&
+                            !record.time.isAfter(sleepSession.endTime.plus(Duration.ofHours(2)))
+                    val dateMatch = isTargetDate || isNightBefore || isNearSleep
+                    sourceMatch && dateMatch
                 }
                 latestSpo2 = filtered.maxByOrNull { it.time }
             } catch (e: Exception) {
@@ -579,10 +680,19 @@ open class HealthConnectManager(private val context: Context? = null) {
                         timeRangeFilter = TimeRangeFilter.between(start, end)
                     )
                 )
-                val filtered = resp.records.filter {
-                    sourceFilter == null ||
-                            it.metadata.dataOrigin.packageName.contains(sourceFilter, ignoreCase = true) ||
-                            sourceFilter.contains(it.metadata.dataOrigin.packageName, ignoreCase = true)
+                val filtered = resp.records.filter { record ->
+                    val sourceMatch = sourceFilter == null ||
+                            record.metadata.dataOrigin.packageName.contains(sourceFilter, ignoreCase = true) ||
+                            sourceFilter.contains(record.metadata.dataOrigin.packageName, ignoreCase = true)
+                    val recordTime = record.startTime.atZone(zone)
+                    val recordDate = recordTime.toLocalDate()
+                    val isTargetDate = recordDate == dateToMatch
+                    val isNightBefore = (recordDate == dateToMatch.minusDays(1) && recordTime.hour >= 18)
+                    val isNearSleep = sleepSession != null &&
+                            !record.startTime.isBefore(sleepSession.startTime.minus(Duration.ofHours(6))) &&
+                            !record.startTime.isAfter(sleepSession.endTime.plus(Duration.ofHours(2)))
+                    val dateMatch = isTargetDate || isNightBefore || isNearSleep
+                    sourceMatch && dateMatch
                 }
                 val latest = filtered.maxByOrNull { it.startTime }
                 if (latest != null && latest.deltas.isNotEmpty()) {

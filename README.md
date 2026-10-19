@@ -125,7 +125,11 @@ Vayu is designed to isolate your Fitbit data from other apps that may write to H
 
 ## 🧪 Testing & Quality Assurance
 
-### Unit Tests (`app/src/test`): 33 Passed (100%)
+### Unit Tests (`app/src/test`): 36 Passed (100%)
+* `GoogleHealthApiClientTest`:
+  * `testParseSleepDataPoints_extractsStagesAndDurationsAccurately`: Verifies parsing of raw Google Health API sleep dataPoints, sleep stages (Deep, REM, Light, Awake), short awakenings, and duration.
+  * `testParseStepsDataPoints_extractsCadenceAndCountAccurately`: Verifies authentic intraday step count interval parsing and date-window aggregation.
+  * `testCalculateSleepScore_withRhrRestorationFactor`: Verifies 3-pillar restoration calculation with nocturnal HR samples below daytime resting pulse.
 * `ProvenanceFormatterTest`: Tests friendly display name formatting, single-word compact pill generation, system hash package detection, and source-aware empty states.
 * `HealthDataMappingTest`:
   * `testFitbitOnlyFiltering_strictlyFiltersRecords`: Verifies strict origin matching and zero leakage.
@@ -150,7 +154,7 @@ Vayu is designed to isolate your Fitbit data from other apps that may write to H
   * `testRepository_handlesEmptyPermissions` & `testRepository_handlesPartialMetricFailuresGracefully`: Verifies partial permissions.
 
 > [!NOTE]
-> All 33 unit tests executed and passed cleanly (`BUILD SUCCESSFUL`). Android Lint completed with 0 errors (`lintDebug`).
+> All 36 unit tests executed and passed cleanly (`BUILD SUCCESSFUL`). Android Lint completed with 0 errors (`lintDebug`).
 
 ---
 
@@ -158,8 +162,8 @@ Vayu is designed to isolate your Fitbit data from other apps that may write to H
 
 | File | Type | SHA-256 Checksum |
 | :--- | :--- | :--- |
-| **[`Vayu-Personal-Test.apk`](https://github.com/rishindra-mateti-tech/Google-Fitbit-Air-Data-Representation-App/releases/download/v1.0.4/Vayu-Personal-Test.apk)** | Sideloadable debug APK with authentic custom app icon for personal testing on Samsung Galaxy S25 Ultra | `7571F0612D429AD7AC2551E3A1832AFE5D0A1DB893CD844E51F39C837F91F2C8` |
-| **`Vayu-debug.apk`** | Debug Build | `D8C3FD78ADE8B58FA3835BDF34DDEF9E6C902B0C403282E977732A003E9C51CA` |
+| **`Vayu-Personal-Test.apk`** | Sideloadable debug APK with Google Health API cloud integration & exact Fitbit restoration score | `A2F37EA323888A634B2ADDFEC61BC3A026E291F68C8A917C682E74311C61D20F` |
+| **`Vayu-debug.apk`** | Debug Build | `A2F37EA323888A634B2ADDFEC61BC3A026E291F68C8A917C682E74311C61D20F` |
 | **`Vayu-release.apk`** | Production Release Build | `9FDAC1331A6E1D615892954BB98A06DA70FA87B745094848BBF22594B00815DC` |
 
 ---

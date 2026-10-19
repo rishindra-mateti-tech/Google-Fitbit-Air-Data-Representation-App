@@ -1,7 +1,6 @@
 package com.vayu.health.data
 
-import com.vayu.health.data.model.HealthConnectStatus
-import com.vayu.health.data.model.HealthDashboardState
+import com.vayu.health.data.model.*
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.time.Instant
@@ -28,8 +27,9 @@ class HealthDateRangeCalculator(
         val startOfTargetDay = date.atStartOfDay(zone).toInstant()
         val endOfTargetDay = date.plusDays(1).atStartOfDay(zone).toInstant()
         val queryEnd = if (isCurrentDay) now else endOfTargetDay
-        val sleepWindowStart = if (isCurrentDay) now.minus(24, ChronoUnit.HOURS) else startOfTargetDay.minus(12, ChronoUnit.HOURS)
-        val sleepHistoryStart = if (isCurrentDay) now.minus(7, ChronoUnit.DAYS) else startOfTargetDay.minus(7, ChronoUnit.DAYS)
+        // Sleep that ends on `date` can start in the afternoon/evening of `date - 1`
+        val sleepWindowStart = startOfTargetDay.minus(14, ChronoUnit.HOURS)
+        val sleepHistoryStart = startOfTargetDay.minus(7, ChronoUnit.DAYS)
         return DateWindows(
             now = queryEnd,
             startOfToday = startOfTargetDay,
@@ -41,7 +41,9 @@ class HealthDateRangeCalculator(
 
 class HealthMetricsRepository(
     private val healthConnectManager: HealthConnectManager,
-    private val dateRangeCalculator: HealthDateRangeCalculator = HealthDateRangeCalculator()
+    private val dateRangeCalculator: HealthDateRangeCalculator = HealthDateRangeCalculator(),
+    private val googleHealthApiClient: com.vayu.health.data.network.GoogleHealthApiClient? = null,
+    private val sourcePreferences: HealthSourcePreferences? = null
 ) {
     /**
      * Reads health metrics filtered by the specified DataOrigin source package and target date.
@@ -76,7 +78,8 @@ class HealthMetricsRepository(
             )
         }
 
-        val windows = dateRangeCalculator.calculateWindows(targetDate)
+        val effectiveDate = targetDate ?: LocalDate.now()
+        val windows = dateRangeCalculator.calculateWindows(effectiveDate)
         val now = windows.now
         val startOfToday = windows.startOfToday
         val sleepWindowStart = windows.sleepWindowStart
@@ -85,11 +88,12 @@ class HealthMetricsRepository(
         // Detect all active origins across records
         val detectedSources = healthConnectManager.detectAvailableDataOrigins(historyStart, now)
         val isFitbitDetected = detectedSources.any { it.contains("fitbit", ignoreCase = true) }
+        val fitbitSource = detectedSources.firstOrNull { it.contains("fitbit", ignoreCase = true) }
 
         val errors = mutableListOf<String>()
 
         val sleep = try {
-            healthConnectManager.readSleep(sleepWindowStart, now, sourceFilter)
+            healthConnectManager.readSleep(sleepWindowStart, now, sourceFilter, effectiveDate)
         } catch (e: Exception) {
             errors.add(sanitizeErrorMessage("sleep", e))
             null
@@ -102,40 +106,46 @@ class HealthMetricsRepository(
             emptyList()
         }
 
-        // Use a wide 36-hour lookback window for single-daily nocturnal metrics (Resting HR, HRV, Respiratory Rate, SpO2, Skin Temp)
-        // so nocturnal records stamped before midnight or at sleep onset are never truncated
-        val vitalsWindowStart = startOfToday.minus(36, ChronoUnit.HOURS)
+        // Use a 24-hour previous-evening lookback for nocturnal vitals corresponding to this day's sleep
+        val vitalsWindowStart = startOfToday.minus(24, ChronoUnit.HOURS)
 
         val restingHr = try {
-            healthConnectManager.readRestingHeartRate(vitalsWindowStart, now, sourceFilter)
+            healthConnectManager.readRestingHeartRate(vitalsWindowStart, now, sourceFilter, effectiveDate, sleep)
         } catch (e: Exception) {
             errors.add(sanitizeErrorMessage("resting heart rate", e))
             null
         }
 
         val hrv = try {
-            healthConnectManager.readHrv(vitalsWindowStart, now, sourceFilter)
+            healthConnectManager.readHrv(vitalsWindowStart, now, sourceFilter, effectiveDate, sleep)
         } catch (e: Exception) {
             errors.add(sanitizeErrorMessage("HRV", e))
             null
         }
 
+        // Include samples from previous evening so nocturnal heart rate throughout the night is preserved
         val heartRate = try {
-            healthConnectManager.readHeartRate(startOfToday, now, sourceFilter)
+            healthConnectManager.readHeartRate(startOfToday.minus(8, ChronoUnit.HOURS), now, sourceFilter)
         } catch (e: Exception) {
             errors.add(sanitizeErrorMessage("heart rate", e))
             null
         }
 
+        // Prioritize wearable (Fitbit) when sourceFilter is null to avoid double counting with Samsung Health phone accelerometer steps
         val activity = try {
-            healthConnectManager.readActivity(startOfToday, now, sourceFilter)
+            if (sourceFilter == null && fitbitSource != null) {
+                val fitbitAct = healthConnectManager.readActivity(startOfToday, now, fitbitSource)
+                fitbitAct ?: healthConnectManager.readActivity(startOfToday, now, null)
+            } else {
+                healthConnectManager.readActivity(startOfToday, now, sourceFilter)
+            }
         } catch (e: Exception) {
             errors.add(sanitizeErrorMessage("activity", e))
             null
         }
 
         val respiratory = try {
-            healthConnectManager.readRespiratory(vitalsWindowStart, now, sourceFilter)
+            healthConnectManager.readRespiratory(vitalsWindowStart, now, sourceFilter, effectiveDate, sleep)
         } catch (e: Exception) {
             errors.add(sanitizeErrorMessage("respiratory", e))
             null
@@ -144,9 +154,88 @@ class HealthMetricsRepository(
         val rawRecords = healthConnectManager.readRawRecordsForInspector(sleepWindowStart, now, sourceFilter)
         val isSkinTempSupported = healthConnectManager.isSkinTemperatureSupported()
 
+        var finalSleep = sleep
+        var finalActivity = activity
+        var isCloudActive = false
+
+        // Cloud Synchronization via Google Health API (when configured)
+        if (googleHealthApiClient != null && googleHealthApiClient.isConfigured()) {
+            val target = targetDate ?: LocalDate.now()
+            try {
+                val cloudSleep = googleHealthApiClient.fetchSleepData(target)
+                if (cloudSleep.isSuccessful && cloudSleep.data != null) {
+                    val cs = cloudSleep.data
+                    isCloudActive = true
+                    finalSleep = if (finalSleep == null) {
+                        cs
+                    } else {
+                        finalSleep.copy(
+                            recordedScore = finalSleep.recordedScore ?: cs.recordedScore,
+                            stages = if (finalSleep.stages.isEmpty() && cs.stages.isNotEmpty()) cs.stages else finalSleep.stages,
+                            actualSleepDurationMinutes = finalSleep.actualSleepDurationMinutes ?: cs.actualSleepDurationMinutes
+                        )
+                    }
+                }
+
+                val cloudSteps = googleHealthApiClient.fetchStepsData(target)
+                if (cloudSteps.isSuccessful && cloudSteps.data != null && cloudSteps.data > 0L) {
+                    isCloudActive = true
+                    val currentSteps = finalActivity?.steps ?: 0L
+                    if (cloudSteps.data > currentSteps) {
+                        finalActivity = finalActivity?.copy(steps = cloudSteps.data)
+                            ?: ActivityMetric(
+                                steps = cloudSteps.data,
+                                activeCaloriesKcal = null,
+                                totalCaloriesKcal = null,
+                                distanceMeters = null,
+                                sources = setOf(com.vayu.health.data.network.GoogleHealthApiClient.DATA_ORIGIN_CLOUD),
+                                lastUpdated = now
+                            )
+                    }
+                }
+            } catch (e: Exception) {
+                android.util.Log.w("HealthMetricsRepository", "Cloud sync non-fatal error: ${e.message}")
+            }
+        }
+
+        // Fallback for Resting Heart Rate if Health Connect has no RestingHeartRateRecord but pulse samples exist
+        var finalRestingHr = restingHr
+        if (finalRestingHr == null && heartRate != null && heartRate.samples.isNotEmpty()) {
+            val sleepSamples = if (finalSleep != null) {
+                heartRate.samples.filter { !it.time.isBefore(finalSleep.startTime) && !it.time.isAfter(finalSleep.endTime) }
+            } else emptyList()
+
+            val derivedBpm = if (sleepSamples.isNotEmpty()) {
+                val sleepingAvg = sleepSamples.map { it.beatsPerMinute }.average()
+                (sleepingAvg + 6.0).toLong().coerceIn(40L, 120L)
+            } else {
+                val sortedBpm = heartRate.samples.map { it.beatsPerMinute }.sorted()
+                val p10Index = (sortedBpm.size * 0.10).toInt().coerceIn(0, sortedBpm.lastIndex)
+                sortedBpm[p10Index].coerceIn(40L, 120L)
+            }
+
+            finalRestingHr = RestingHeartRateMetric(
+                beatsPerMinute = derivedBpm,
+                timestamp = heartRate.timestamp ?: now,
+                sourcePackage = heartRate.sourcePackage
+            )
+        }
+
+        val sleepQuality = HealthDataCalculations.calculateSleepQuality(
+            sleep = finalSleep,
+            nocturnalHeartRateSamples = heartRate?.samples ?: emptyList()
+        )
+
+        val resilience = HealthDataCalculations.calculateResilience(
+            sleep = finalSleep,
+            activity = finalActivity,
+            hrv = hrv,
+            rhr = finalRestingHr
+        )
+
         // Evaluate if Fitbit sync is needed (Fitbit source active but no records found)
         val isFitbitSource = sourceFilter != null && sourceFilter.contains("fitbit", ignoreCase = true)
-        val hasAnyFitbitData = sleep != null || heartRate != null || restingHr != null || hrv != null || activity != null || respiratory != null
+        val hasAnyFitbitData = finalSleep != null || heartRate != null || finalRestingHr != null || hrv != null || finalActivity != null || respiratory != null
         val isFitbitSyncNeeded = isFitbitSource && !hasAnyFitbitData
 
         HealthDashboardState(
@@ -158,15 +247,18 @@ class HealthMetricsRepository(
             detectedSources = detectedSources,
             isFitbitDetected = isFitbitDetected,
             isFitbitSyncNeeded = isFitbitSyncNeeded,
-            sleep = sleep,
+            sleep = finalSleep,
             dailySleepHistory = sleepHistory,
-            restingHeartRate = restingHr,
+            restingHeartRate = finalRestingHr,
             hrv = hrv,
             heartRate = heartRate,
-            activity = activity,
+            activity = finalActivity,
             respiratory = respiratory,
+            resilience = resilience,
+            sleepQuality = sleepQuality,
             rawRecords = rawRecords,
             isSkinTemperatureSupported = isSkinTempSupported,
+            isCloudSyncActive = isCloudActive,
             errorMessages = errors
         )
     }

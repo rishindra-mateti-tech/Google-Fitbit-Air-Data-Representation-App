@@ -63,9 +63,14 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        healthConnectManager = HealthConnectManager(this)
-        repository = HealthMetricsRepository(healthConnectManager)
         sourcePreferences = HealthSourcePreferences(this)
+        healthConnectManager = HealthConnectManager(this)
+        val googleHealthApiClient = com.vayu.health.data.network.GoogleHealthApiClient(sourcePreferences)
+        repository = HealthMetricsRepository(
+            healthConnectManager = healthConnectManager,
+            googleHealthApiClient = googleHealthApiClient,
+            sourcePreferences = sourcePreferences
+        )
 
         // Health Connect Permissions Contract
         val requestPermissionsContract = PermissionController.createRequestPermissionResultContract()

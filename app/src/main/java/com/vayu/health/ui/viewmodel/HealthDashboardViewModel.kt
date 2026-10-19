@@ -49,9 +49,30 @@ class HealthDashboardViewModel(
             _uiState.value = _uiState.value.copy(isLoading = true)
             val date = _selectedDate.value
             val result = repository.getTodayDashboardState(sourceFilter = currentSource, targetDate = date)
-            val calculatedSleepScore = com.vayu.health.data.model.HealthDataCalculations.calculateSleepScore(result.sleep)
+            val targetMins = sourcePreferences?.getSleepTargetMinutes() ?: 480
+            val calculatedSleepScore = com.vayu.health.data.model.HealthDataCalculations.calculateSleepScore(
+                sleep = result.sleep,
+                targetMinutes = targetMins,
+                restingHeartRateBpm = result.restingHeartRate?.beatsPerMinute,
+                nocturnalHeartRateSamples = result.heartRate?.samples ?: emptyList()
+            )
             _uiState.value = result.copy(sleepScore = calculatedSleepScore)
         }
+    }
+
+    fun updateSleepTarget(minutes: Int) {
+        sourcePreferences?.setSleepTargetMinutes(minutes)
+        loadMetrics()
+    }
+
+    fun updateGoogleHealthRefreshToken(refreshToken: String) {
+        sourcePreferences?.setGoogleHealthRefreshToken(refreshToken)
+        loadMetrics(forceRefresh = true)
+    }
+
+    fun setGoogleHealthEnabled(enabled: Boolean) {
+        sourcePreferences?.setGoogleHealthEnabled(enabled)
+        loadMetrics(forceRefresh = true)
     }
 
     fun openMetricDetail(metric: MetricDetailType) {
