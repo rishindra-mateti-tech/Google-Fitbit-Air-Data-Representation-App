@@ -68,11 +68,15 @@ class HealthDashboardViewModel(
             val date = _selectedDate.value
             val result = repository.getTodayDashboardState(sourceFilter = currentSource, targetDate = date)
             val targetMins = sourcePreferences?.getSleepTargetMinutes() ?: 480
-            val calculatedSleepScore = com.vayu.health.data.model.HealthDataCalculations.calculateSleepScore(
-                sleep = result.sleep,
+            val currentSleep = result.sleep
+            val sleepHrSamples = if (currentSleep != null && result.heartRate != null) {
+                result.heartRate.samples.filter { it.time >= currentSleep.startTime && it.time <= currentSleep.endTime }
+            } else emptyList()
+            val calculatedSleepScore = currentSleep?.recordedScore ?: com.vayu.health.data.model.HealthDataCalculations.calculateSleepScore(
+                sleep = currentSleep,
                 targetMinutes = targetMins,
                 restingHeartRateBpm = result.restingHeartRate?.beatsPerMinute,
-                nocturnalHeartRateSamples = result.heartRate?.samples ?: emptyList()
+                nocturnalHeartRateSamples = sleepHrSamples
             )
             _uiState.value = result.copy(sleepScore = calculatedSleepScore)
         }

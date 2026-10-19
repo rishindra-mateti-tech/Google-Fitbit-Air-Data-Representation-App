@@ -315,10 +315,14 @@ object HealthDataCalculations {
         val restorativeScore = ((restorativeRatio / 0.40) * 25.0).coerceIn(0.0, 25.0)
 
         // 3. Restoration (Sleeping HR below daytime RHR + restlessness factor, up to 25 pts)
-        val restorationScore = if (restingHeartRateBpm != null && restingHeartRateBpm > 0 && nocturnalHeartRateSamples.isNotEmpty()) {
-            val belowRhrSamples = nocturnalHeartRateSamples.count { it.beatsPerMinute < restingHeartRateBpm }
-            val belowRhrFraction = belowRhrSamples.toDouble() / nocturnalHeartRateSamples.size
-            val hrSubScore = (belowRhrFraction / 0.85).coerceIn(0.0, 1.0) * 20.0
+        val sleepHrSamples = if (nocturnalHeartRateSamples.isNotEmpty()) {
+            nocturnalHeartRateSamples.filter { it.time >= sleep.startTime && it.time <= sleep.endTime }
+        } else emptyList()
+
+        val restorationScore = if (restingHeartRateBpm != null && restingHeartRateBpm > 0 && sleepHrSamples.size >= 10) {
+            val belowRhrSamples = sleepHrSamples.count { it.beatsPerMinute <= restingHeartRateBpm }
+            val belowRhrFraction = belowRhrSamples.toDouble() / sleepHrSamples.size
+            val hrSubScore = (belowRhrFraction / 0.70).coerceIn(0.0, 1.0) * 20.0
             val restlessnessPenalty = (sleep.awakeMinutes.toDouble() / elapsedMins).coerceIn(0.0, 1.0) * 5.0
             (hrSubScore + (5.0 - restlessnessPenalty)).coerceIn(0.0, 25.0)
         } else {

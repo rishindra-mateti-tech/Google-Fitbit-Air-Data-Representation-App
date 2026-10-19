@@ -656,6 +656,52 @@ class HealthDataMappingTest {
     }
 
     @Test
+    fun testSleepScore_filtersDaytimeHeartRateSamplesOutsideSleepWindow() {
+        val sleepStart = Instant.parse("2026-10-19T00:00:00Z")
+        val sleepEnd = Instant.parse("2026-10-19T08:00:00Z")
+        val sleep = SleepMetric(
+            sessionElapsedMinutes = 480L,
+            actualSleepDurationMinutes = 420L,
+            deepMinutes = 90L,
+            remMinutes = 90L,
+            lightMinutes = 240L,
+            sleepingMinutes = 0L,
+            awakeMinutes = 60L,
+            outOfBedMinutes = 0L,
+            startTime = sleepStart,
+            endTime = sleepEnd,
+            stages = emptyList(),
+            sourcePackage = "com.fitbit.FitbitMobile"
+        )
+        val nightSamples = (0 until 20).map { i ->
+            HeartRateSamplePoint(
+                time = sleepStart.plusSeconds(i * 1000L),
+                beatsPerMinute = 58L
+            )
+        }
+        val daytimeSamples = (0 until 50).map { i ->
+            HeartRateSamplePoint(
+                time = sleepEnd.plusSeconds(3600L + i * 500L),
+                beatsPerMinute = 110L
+            )
+        }
+        val mixedSamples = nightSamples + daytimeSamples
+
+        val scoreWithMixedSamples = HealthDataCalculations.calculateSleepScore(
+            sleep = sleep,
+            restingHeartRateBpm = 65L,
+            nocturnalHeartRateSamples = mixedSamples
+        )
+        val scoreNightOnly = HealthDataCalculations.calculateSleepScore(
+            sleep = sleep,
+            restingHeartRateBpm = 65L,
+            nocturnalHeartRateSamples = nightSamples
+        )
+        assertNotNull(scoreWithMixedSamples)
+        assertEquals("Daytime HR samples must not contaminate sleep restoration score", scoreNightOnly, scoreWithMixedSamples)
+    }
+
+    @Test
     fun testHrv_sessionAveragingCalculation() {
         val samples = listOf(28.0, 31.0, 34.0)
         val avg = samples.average()

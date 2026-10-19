@@ -258,6 +258,12 @@ class HealthMetricsRepository(
         val isFitbitSource = sourceFilter != null && sourceFilter.contains("fitbit", ignoreCase = true)
         val hasAnyFitbitData = finalSleep != null || heartRate != null || finalRestingHr != null || hrv != null || finalActivity != null || respiratory != null
         val isFitbitSyncNeeded = isFitbitSource && !hasAnyFitbitData
+        val computedSleepScore = finalSleep?.recordedScore ?: HealthDataCalculations.calculateSleepScore(
+            sleep = finalSleep,
+            targetMinutes = 480,
+            restingHeartRateBpm = finalRestingHr?.beatsPerMinute,
+            nocturnalHeartRateSamples = heartRate?.samples ?: emptyList()
+        )
 
         HealthDashboardState(
             isLoading = false,
@@ -269,6 +275,7 @@ class HealthMetricsRepository(
             isFitbitDetected = isFitbitDetected,
             isFitbitSyncNeeded = isFitbitSyncNeeded,
             sleep = finalSleep,
+            sleepScore = computedSleepScore,
             dailySleepHistory = sleepHistory,
             readinessScore = readinessResult.score,
             readinessLevel = readinessResult.levelLabel,

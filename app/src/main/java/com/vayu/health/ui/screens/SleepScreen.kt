@@ -63,7 +63,13 @@ fun SleepScreen(
     val activeSession = allSessions.getOrNull(selectedSessionIndex) ?: sleep
 
     val isNap = activeSession?.isNap == true
-    val activeScore = if (isNap) null else (if (activeSession == sleep) state.sleepScore ?: HealthDataCalculations.calculateSleepScore(sleep) else HealthDataCalculations.calculateSleepScore(activeSession))
+    val isMainSession = activeSession != null && sleep != null &&
+            activeSession.startTime == sleep.startTime && activeSession.endTime == sleep.endTime
+    val activeScore = if (isNap) null else if (isMainSession) {
+        state.sleepScore ?: HealthDataCalculations.calculateSleepScore(sleep)
+    } else {
+        HealthDataCalculations.calculateSleepScore(activeSession)
+    }
 
     val actualSleepMinutes = activeSession?.actualSleepDurationMinutes
     val inBedMinutes = activeSession?.sessionElapsedMinutes
