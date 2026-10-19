@@ -361,10 +361,12 @@ open class HealthConnectManager(private val context: Context? = null) {
             )
             val zone = ZoneId.systemDefault()
             val dateToMatch = targetDate ?: LocalDate.now()
-            val filtered = response.records.filter { record ->
-                val sourceMatch = sourceFilter == null ||
+            val sourceRecords = response.records.filter { record ->
+                sourceFilter == null ||
                         record.metadata.dataOrigin.packageName.contains(sourceFilter, ignoreCase = true) ||
                         sourceFilter.contains(record.metadata.dataOrigin.packageName, ignoreCase = true)
+            }
+            val filtered = sourceRecords.filter { record ->
                 val recordTime = record.time.atZone(zone)
                 val recordDate = recordTime.toLocalDate()
                 val isTargetDate = recordDate == dateToMatch
@@ -373,9 +375,11 @@ open class HealthConnectManager(private val context: Context? = null) {
                         !record.time.isBefore(sleepSession.startTime.minus(Duration.ofHours(6))) &&
                         !record.time.isAfter(sleepSession.endTime.plus(Duration.ofHours(2)))
                 val dateMatch = isTargetDate || isNightBefore || isNearSleep
-                sourceMatch && dateMatch
+                dateMatch
             }
-            val latest = filtered.maxByOrNull { it.time } ?: return null
+            val latest = filtered.maxByOrNull { it.time }
+                ?: sourceRecords.filter { !it.time.atZone(zone).toLocalDate().isAfter(dateToMatch) }.maxByOrNull { it.time }
+                ?: return null
             RestingHeartRateMetric(
                 beatsPerMinute = latest.beatsPerMinute,
                 timestamp = latest.time,
@@ -384,6 +388,40 @@ open class HealthConnectManager(private val context: Context? = null) {
         } catch (e: Exception) {
             Log.e(tag, "Error reading resting heart rate", e)
             throw e
+        }
+    }
+
+    open suspend fun readRestingHeartRateHistory(
+        start: Instant,
+        end: Instant,
+        sourceFilter: String? = null
+    ): List<Pair<LocalDate, Long>> {
+        val client = healthConnectClient ?: return emptyList()
+        if (!hasPermission(HealthPermission.getReadPermission(RestingHeartRateRecord::class))) {
+            return emptyList()
+        }
+
+        return try {
+            val response = client.readRecords(
+                ReadRecordsRequest(
+                    recordType = RestingHeartRateRecord::class,
+                    timeRangeFilter = TimeRangeFilter.between(start, end)
+                )
+            )
+            val zone = ZoneId.systemDefault()
+            response.records
+                .filter { record ->
+                    sourceFilter == null ||
+                            record.metadata.dataOrigin.packageName.contains(sourceFilter, ignoreCase = true) ||
+                            sourceFilter.contains(record.metadata.dataOrigin.packageName, ignoreCase = true)
+                }
+                .groupBy { it.time.atZone(zone).toLocalDate() }
+                .mapValues { (_, records) -> (records.map { it.beatsPerMinute }.average()).toLong() }
+                .toList()
+                .sortedBy { it.first }
+        } catch (e: Exception) {
+            Log.e(tag, "Error reading resting heart rate history", e)
+            emptyList()
         }
     }
 
@@ -408,10 +446,12 @@ open class HealthConnectManager(private val context: Context? = null) {
             )
             val zone = ZoneId.systemDefault()
             val dateToMatch = targetDate ?: LocalDate.now()
-            val filtered = response.records.filter { record ->
-                val sourceMatch = sourceFilter == null ||
+            val sourceRecords = response.records.filter { record ->
+                sourceFilter == null ||
                         record.metadata.dataOrigin.packageName.contains(sourceFilter, ignoreCase = true) ||
                         sourceFilter.contains(record.metadata.dataOrigin.packageName, ignoreCase = true)
+            }
+            val filtered = sourceRecords.filter { record ->
                 val recordTime = record.time.atZone(zone)
                 val recordDate = recordTime.toLocalDate()
                 val isTargetDate = recordDate == dateToMatch
@@ -420,11 +460,18 @@ open class HealthConnectManager(private val context: Context? = null) {
                         !record.time.isBefore(sleepSession.startTime.minus(Duration.ofHours(6))) &&
                         !record.time.isAfter(sleepSession.endTime.plus(Duration.ofHours(2)))
                 val dateMatch = isTargetDate || isNightBefore || isNearSleep
-                sourceMatch && dateMatch
+                dateMatch
             }
-            if (filtered.isEmpty()) return null
-            val avgRmssd = filtered.map { it.heartRateVariabilityMillis }.average()
-            val latest = filtered.maxByOrNull { it.time } ?: return null
+            val targetOrHistorical = if (filtered.isNotEmpty()) filtered else {
+                val prior = sourceRecords.filter { !it.time.atZone(zone).toLocalDate().isAfter(dateToMatch) }
+                val mostRecentDay = prior.maxByOrNull { it.time }?.time?.atZone(zone)?.toLocalDate()
+                if (mostRecentDay != null) {
+                    prior.filter { it.time.atZone(zone).toLocalDate() == mostRecentDay }
+                } else emptyList()
+            }
+            if (targetOrHistorical.isEmpty()) return null
+            val avgRmssd = targetOrHistorical.map { it.heartRateVariabilityMillis }.average()
+            val latest = targetOrHistorical.maxByOrNull { it.time } ?: return null
             HrvMetric(
                 rmssdMillis = avgRmssd,
                 timestamp = latest.time,
@@ -433,6 +480,40 @@ open class HealthConnectManager(private val context: Context? = null) {
         } catch (e: Exception) {
             Log.e(tag, "Error reading HRV", e)
             throw e
+        }
+    }
+
+    open suspend fun readHrvHistory(
+        start: Instant,
+        end: Instant,
+        sourceFilter: String? = null
+    ): List<Pair<LocalDate, Double>> {
+        val client = healthConnectClient ?: return emptyList()
+        if (!hasPermission(HealthPermission.getReadPermission(HeartRateVariabilityRmssdRecord::class))) {
+            return emptyList()
+        }
+
+        return try {
+            val response = client.readRecords(
+                ReadRecordsRequest(
+                    recordType = HeartRateVariabilityRmssdRecord::class,
+                    timeRangeFilter = TimeRangeFilter.between(start, end)
+                )
+            )
+            val zone = ZoneId.systemDefault()
+            response.records
+                .filter { record ->
+                    sourceFilter == null ||
+                            record.metadata.dataOrigin.packageName.contains(sourceFilter, ignoreCase = true) ||
+                            sourceFilter.contains(record.metadata.dataOrigin.packageName, ignoreCase = true)
+                }
+                .groupBy { it.time.atZone(zone).toLocalDate() }
+                .mapValues { (_, records) -> records.map { it.heartRateVariabilityMillis }.average() }
+                .toList()
+                .sortedBy { it.first }
+        } catch (e: Exception) {
+            Log.e(tag, "Error reading HRV history", e)
+            emptyList()
         }
     }
 
@@ -614,6 +695,8 @@ open class HealthConnectManager(private val context: Context? = null) {
         val dateToMatch = targetDate ?: LocalDate.now()
 
         var latestResp: RespiratoryRateRecord? = null
+        var isBreathingFallback = false
+        var dailyBreathingRateHistory = emptyList<Pair<LocalDate, Double>>()
         if (HealthPermission.getReadPermission(RespiratoryRateRecord::class) in granted) {
             try {
                 val resp = client.readRecords(
@@ -622,10 +705,18 @@ open class HealthConnectManager(private val context: Context? = null) {
                         timeRangeFilter = TimeRangeFilter.between(start, end)
                     )
                 )
-                val filtered = resp.records.filter { record ->
-                    val sourceMatch = sourceFilter == null ||
+                val sourceRecords = resp.records.filter { record ->
+                    sourceFilter == null ||
                             record.metadata.dataOrigin.packageName.contains(sourceFilter, ignoreCase = true) ||
                             sourceFilter.contains(record.metadata.dataOrigin.packageName, ignoreCase = true)
+                }
+                dailyBreathingRateHistory = sourceRecords
+                    .groupBy { it.time.atZone(zone).toLocalDate() }
+                    .mapValues { (_, records) -> records.map { it.rate }.average() }
+                    .toList()
+                    .sortedBy { it.first }
+
+                val filtered = sourceRecords.filter { record ->
                     val recordTime = record.time.atZone(zone)
                     val recordDate = recordTime.toLocalDate()
                     val isTargetDate = recordDate == dateToMatch
@@ -633,16 +724,23 @@ open class HealthConnectManager(private val context: Context? = null) {
                     val isNearSleep = sleepSession != null &&
                             !record.time.isBefore(sleepSession.startTime.minus(Duration.ofHours(6))) &&
                             !record.time.isAfter(sleepSession.endTime.plus(Duration.ofHours(2)))
-                    val dateMatch = isTargetDate || isNightBefore || isNearSleep
-                    sourceMatch && dateMatch
+                    isTargetDate || isNightBefore || isNearSleep
                 }
                 latestResp = filtered.maxByOrNull { it.time }
+                if (latestResp == null && sourceRecords.isNotEmpty()) {
+                    latestResp = sourceRecords.filter { !it.time.atZone(zone).toLocalDate().isAfter(dateToMatch) }.maxByOrNull { it.time }
+                    if (latestResp != null) {
+                        isBreathingFallback = true
+                    }
+                }
             } catch (e: Exception) {
                 Log.e(tag, "Error reading respiratory rate", e)
             }
         }
 
         var latestSpo2: OxygenSaturationRecord? = null
+        var isSpo2Fallback = false
+        var dailySpo2History = emptyList<Pair<LocalDate, Double>>()
         if (HealthPermission.getReadPermission(OxygenSaturationRecord::class) in granted) {
             try {
                 val resp = client.readRecords(
@@ -651,10 +749,21 @@ open class HealthConnectManager(private val context: Context? = null) {
                         timeRangeFilter = TimeRangeFilter.between(start, end)
                     )
                 )
-                val filtered = resp.records.filter { record ->
-                    val sourceMatch = sourceFilter == null ||
+                val sourceRecords = resp.records.filter { record ->
+                    sourceFilter == null ||
                             record.metadata.dataOrigin.packageName.contains(sourceFilter, ignoreCase = true) ||
                             sourceFilter.contains(record.metadata.dataOrigin.packageName, ignoreCase = true)
+                }
+                dailySpo2History = sourceRecords
+                    .groupBy { it.time.atZone(zone).toLocalDate() }
+                    .mapValues { (_, records) ->
+                        val avg = records.map { it.percentage.value }.average()
+                        if (avg <= 1.0) avg * 100.0 else avg
+                    }
+                    .toList()
+                    .sortedBy { it.first }
+
+                val filtered = sourceRecords.filter { record ->
                     val recordTime = record.time.atZone(zone)
                     val recordDate = recordTime.toLocalDate()
                     val isTargetDate = recordDate == dateToMatch
@@ -662,16 +771,22 @@ open class HealthConnectManager(private val context: Context? = null) {
                     val isNearSleep = sleepSession != null &&
                             !record.time.isBefore(sleepSession.startTime.minus(Duration.ofHours(6))) &&
                             !record.time.isAfter(sleepSession.endTime.plus(Duration.ofHours(2)))
-                    val dateMatch = isTargetDate || isNightBefore || isNearSleep
-                    sourceMatch && dateMatch
+                    isTargetDate || isNightBefore || isNearSleep
                 }
                 latestSpo2 = filtered.maxByOrNull { it.time }
+                if (latestSpo2 == null && sourceRecords.isNotEmpty()) {
+                    latestSpo2 = sourceRecords.filter { !it.time.atZone(zone).toLocalDate().isAfter(dateToMatch) }.maxByOrNull { it.time }
+                    if (latestSpo2 != null) {
+                        isSpo2Fallback = true
+                    }
+                }
             } catch (e: Exception) {
                 Log.e(tag, "Error reading SpO2", e)
             }
         }
 
         var skinTempMetric: SkinTemperatureMetric? = null
+        var dailySkinTempHistory = emptyList<Pair<LocalDate, Double>>()
         if (isSkinTemperatureSupported() && HealthPermission.getReadPermission(SkinTemperatureRecord::class) in granted) {
             try {
                 val resp = client.readRecords(
@@ -680,10 +795,20 @@ open class HealthConnectManager(private val context: Context? = null) {
                         timeRangeFilter = TimeRangeFilter.between(start, end)
                     )
                 )
-                val filtered = resp.records.filter { record ->
-                    val sourceMatch = sourceFilter == null ||
+                val sourceRecords = resp.records.filter { record ->
+                    sourceFilter == null ||
                             record.metadata.dataOrigin.packageName.contains(sourceFilter, ignoreCase = true) ||
                             sourceFilter.contains(record.metadata.dataOrigin.packageName, ignoreCase = true)
+                }
+                dailySkinTempHistory = sourceRecords
+                    .groupBy { it.startTime.atZone(zone).toLocalDate() }
+                    .mapNotNull { (date, records) ->
+                        val deltas = records.flatMap { it.deltas.map { d -> d.delta.inCelsius } }
+                        if (deltas.isNotEmpty()) date to deltas.average() else null
+                    }
+                    .sortedBy { it.first }
+
+                val filtered = sourceRecords.filter { record ->
                     val recordTime = record.startTime.atZone(zone)
                     val recordDate = recordTime.toLocalDate()
                     val isTargetDate = recordDate == dateToMatch
@@ -691,10 +816,10 @@ open class HealthConnectManager(private val context: Context? = null) {
                     val isNearSleep = sleepSession != null &&
                             !record.startTime.isBefore(sleepSession.startTime.minus(Duration.ofHours(6))) &&
                             !record.startTime.isAfter(sleepSession.endTime.plus(Duration.ofHours(2)))
-                    val dateMatch = isTargetDate || isNightBefore || isNearSleep
-                    sourceMatch && dateMatch
+                    isTargetDate || isNightBefore || isNearSleep
                 }
                 val latest = filtered.maxByOrNull { it.startTime }
+                    ?: sourceRecords.filter { !it.startTime.atZone(zone).toLocalDate().isAfter(dateToMatch) }.maxByOrNull { it.startTime }
                 if (latest != null && latest.deltas.isNotEmpty()) {
                     val deltas = latest.deltas.map { it.delta.inCelsius }
                     skinTempMetric = SkinTemperatureMetric(
@@ -735,7 +860,12 @@ open class HealthConnectManager(private val context: Context? = null) {
             spo2SourcePackage = spo2Source,
             skinTemperature = skinTempMetric,
             timestamp = spo2Time ?: respTime ?: skinTempMetric?.timestamp,
-            contributingSources = sources
+            contributingSources = sources,
+            isSpo2HistoricalFallback = isSpo2Fallback,
+            isBreathingRateHistoricalFallback = isBreathingFallback,
+            dailySpo2History = dailySpo2History,
+            dailyBreathingRateHistory = dailyBreathingRateHistory,
+            dailySkinTempHistory = dailySkinTempHistory
         )
     }
 

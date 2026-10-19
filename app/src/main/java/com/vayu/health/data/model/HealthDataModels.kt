@@ -2,6 +2,7 @@ package com.vayu.health.data.model
 
 import java.time.Instant
 import java.time.LocalDate
+import kotlin.math.roundToInt
 
 /**
  * STRICT PHILOSOPHY: NO INVENTED METRICS.
@@ -113,7 +114,12 @@ data class RespiratoryMetric(
     val spo2SourcePackage: String?,
     val skinTemperature: SkinTemperatureMetric?,
     val timestamp: Instant?,
-    val contributingSources: Set<String> = emptySet()
+    val contributingSources: Set<String> = emptySet(),
+    val isSpo2HistoricalFallback: Boolean = false,
+    val isBreathingRateHistoricalFallback: Boolean = false,
+    val dailySpo2History: List<Pair<LocalDate, Double>> = emptyList(),
+    val dailyBreathingRateHistory: List<Pair<LocalDate, Double>> = emptyList(),
+    val dailySkinTempHistory: List<Pair<LocalDate, Double>> = emptyList()
 )
 
 data class RawHealthRecord(
@@ -165,10 +171,13 @@ enum class MetricDetailType {
     STRESS,
     RESTING_HR,
     HRV,
-    RESP_RATE,
+    BREATHING_RATE,
     SPO2,
-    RESP_TEMP,
-    SKIN_TEMP
+    SKIN_TEMP;
+
+    companion object {
+        val RESP_RATE = BREATHING_RATE
+    }
 }
 
 data class HealthDashboardState(
@@ -183,8 +192,12 @@ data class HealthDashboardState(
     val sleep: SleepMetric? = null,
     val sleepScore: Int? = null,
     val dailySleepHistory: List<DailySleepSummary> = emptyList(),
+    val readinessScore: Int? = null,
+    val readinessLevel: String? = null,
     val restingHeartRate: RestingHeartRateMetric? = null,
+    val dailyRestingHrHistory: List<Pair<LocalDate, Long>> = emptyList(),
     val hrv: HrvMetric? = null,
+    val dailyHrvHistory: List<Pair<LocalDate, Double>> = emptyList(),
     val heartRate: HeartRateMetric? = null,
     val activity: ActivityMetric? = null,
     val respiratory: RespiratoryMetric? = null,
@@ -684,6 +697,71 @@ object HealthDataCalculations {
             activityBalanceText = actText,
             physicalCalmnessStatus = calmStatus,
             physicalCalmnessText = calmText
+        )
+    }
+
+    data class ReadinessCalculationResult(
+        val score: Int?,
+        val levelLabel: String,
+        val nightsRemaining: Int,
+        val sleepComponentScore: Int,
+        val hrvComponentScore: Int,
+        val rhrComponentScore: Int,
+        val summaryText: String
+    )
+
+    fun calculateReadiness(
+        sleepHistory: List<DailySleepSummary>,
+        todaySleep: SleepMetric?,
+        todayHrv: HrvMetric?,
+        todayRhr: RestingHeartRateMetric?
+    ): ReadinessCalculationResult {
+        val nightsLogged = sleepHistory.size
+        if (nightsLogged < 7) {
+            val remaining = (7 - nightsLogged).coerceIn(1, 7)
+            return ReadinessCalculationResult(
+                score = null,
+                levelLabel = "Calibrating",
+                nightsRemaining = remaining,
+                sleepComponentScore = 0,
+                hrvComponentScore = 0,
+                rhrComponentScore = 0,
+                summaryText = "To get your first daily readiness, wear your device to sleep for ${if (remaining == 1) "1 more night" else "$remaining more nights"}."
+            )
+        }
+
+        // Night 7+ baseline evaluation: Evaluates recovery composite from 3 pillars
+        val sleepDur = todaySleep?.actualSleepDurationMinutes ?: 420L
+        val sleepScore = todaySleep?.recordedScore ?: ((sleepDur / 480.0) * 100.0).roundToInt().coerceIn(50, 100)
+
+        val hrvVal = todayHrv?.rmssdMillis ?: 48.0
+        val hrvScore = ((hrvVal / 48.0) * 85.0).roundToInt().coerceIn(40, 100)
+
+        val rhrVal = todayRhr?.beatsPerMinute ?: 68L
+        val rhrScore = (100 - ((rhrVal - 60).coerceAtLeast(0) * 2)).toInt().coerceIn(40, 100)
+
+        val compositeScore = (sleepScore * 0.40 + hrvScore * 0.35 + rhrScore * 0.25).roundToInt().coerceIn(1, 100)
+        val level = when {
+            compositeScore >= 80 -> "Optimal"
+            compositeScore >= 65 -> "Good"
+            compositeScore >= 50 -> "Moderate"
+            else -> "Low"
+        }
+        val summary = when (level) {
+            "Optimal" -> "Your body is primed for physical and mental demands today."
+            "Good" -> "Your recovery is solid. You're ready to tackle your normal routine."
+            "Moderate" -> "Recovery is steady, but balance higher exertion with pacing."
+            else -> "Your body needs more recovery. Focus on rest and hydration today."
+        }
+
+        return ReadinessCalculationResult(
+            score = compositeScore,
+            levelLabel = level,
+            nightsRemaining = 0,
+            sleepComponentScore = sleepScore,
+            hrvComponentScore = hrvScore,
+            rhrComponentScore = rhrScore,
+            summaryText = summary
         )
     }
 }

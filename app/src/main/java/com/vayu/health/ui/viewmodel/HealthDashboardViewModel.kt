@@ -41,6 +41,24 @@ class HealthDashboardViewModel(
 
     init {
         loadMetrics()
+        startLiveHeartRatePolling()
+    }
+
+    private fun startLiveHeartRatePolling() {
+        viewModelScope.launch {
+            while (true) {
+                kotlinx.coroutines.delay(15_000)
+                if (_selectedDate.value == LocalDate.now() && !_uiState.value.isLoading) {
+                    val liveHr = repository.getLiveHeartRate(currentSource)
+                    if (liveHr != null && liveHr.samples.isNotEmpty()) {
+                        val currentHr = _uiState.value.heartRate
+                        if (currentHr == null || liveHr.latestBpm != currentHr.latestBpm || liveHr.samples.size != currentHr.samples.size) {
+                            _uiState.value = _uiState.value.copy(heartRate = liveHr)
+                        }
+                    }
+                }
+            }
+        }
     }
 
     @Suppress("UNUSED_PARAMETER")

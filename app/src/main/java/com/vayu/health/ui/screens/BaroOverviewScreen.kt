@@ -195,10 +195,13 @@ fun BaroOverviewScreen(
                 horizontalAlignment = Alignment.CenterHorizontally,
                 modifier = Modifier.clickable { viewModel.openMetricDetail(MetricDetailType.READINESS) }
             ) {
+                val readinessScore = state.readinessScore
+                val readinessProgress = readinessScore?.let { it / 100f }
+                val readinessText = readinessScore?.toString() ?: "—"
                 BaroCircleGauge(
                     label = "READINESS",
-                    valueText = "—",
-                    progress = null, // Radial grey dashes (calibrating state)
+                    valueText = readinessText,
+                    progress = readinessProgress,
                     accentColor = BaroReadinessTeal,
                     size = 106.dp,
                     strokeWidth = 10.dp
@@ -384,20 +387,12 @@ fun BaroOverviewScreen(
 
         Spacer(modifier = Modifier.height(28.dp))
 
-        // 4. Section Header: PINNED
+        // 4. Section Header: HEALTH METRICS
         Row(
             modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Text("PINNED", fontSize = 17.sp, fontWeight = FontWeight.Bold, color = BaroTextWhite)
-            Text(
-                "Edit",
-                fontSize = 13.sp,
-                fontWeight = FontWeight.SemiBold,
-                color = BaroReadinessTeal,
-                modifier = Modifier.clickable { /* Edit pinned metrics */ }
-            )
+            Text("HEALTH METRICS", fontSize = 17.sp, fontWeight = FontWeight.Bold, color = BaroTextWhite)
         }
 
         Spacer(modifier = Modifier.height(4.dp))
@@ -409,7 +404,7 @@ fun BaroOverviewScreen(
 
         Spacer(modifier = Modifier.height(14.dp))
 
-        // Pinned Metrics 2-column Grid matching Screenshot 5 exactly
+        // Health Metrics Grid: 5 Core Vitals matching Google Health
         Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
             // Row 1: Resting HR & HRV
             Row(
@@ -438,26 +433,26 @@ fun BaroOverviewScreen(
                 )
             }
 
-            // Row 2: Resp Rate & SpO2
+            // Row 2: Breathing Rate & SpO2
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(12.dp)
             ) {
                 val respBpm = resp?.breathsPerMinute
                 PinnedMetricCard(
-                    title = "RESP RATE",
+                    title = "BREATHING RATE",
                     value = respBpm?.let { "%.1f".format(it) } ?: "—",
                     unit = if (respBpm != null) "br/min" else null,
                     icon = Icons.Default.Timeline,
                     status = if (respBpm != null) RangeStatus.TYPICAL else RangeStatus.UNAVAILABLE,
-                    onClick = { viewModel.openMetricDetail(MetricDetailType.RESP_RATE) },
+                    onClick = { viewModel.openMetricDetail(MetricDetailType.BREATHING_RATE) },
                     modifier = Modifier.weight(1f)
                 )
 
                 val spo2Val = resp?.spo2Percentage
                 val cleanSpo2 = spo2Val?.let { if (it <= 1.0) it * 100.0 else it }
                 PinnedMetricCard(
-                    title = "SPO2",
+                    title = "SpO2",
                     value = cleanSpo2?.let { "%.0f".format(it) } ?: "—",
                     unit = if (cleanSpo2 != null) "%" else null,
                     icon = Icons.Default.Timeline,
@@ -467,36 +462,21 @@ fun BaroOverviewScreen(
                 )
             }
 
-            // Row 3: Resp Temp & Skin Temp
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(12.dp)
-            ) {
-                PinnedMetricCard(
-                    title = "RESP TEMP",
-                    value = "—",
-                    unit = null,
-                    icon = Icons.Default.Thermostat,
-                    status = RangeStatus.UNAVAILABLE,
-                    onClick = { viewModel.openMetricDetail(MetricDetailType.RESP_TEMP) },
-                    modifier = Modifier.weight(1f)
-                )
-
-                val rawDelta = resp?.skinTemperature?.averageDeltaCelsius
-                val skinDelta = rawDelta?.let {
-                    val clean = if (kotlin.math.abs(it) < 0.05) 0.0 else it
-                    "%+.1f".format(clean)
-                }
-                PinnedMetricCard(
-                    title = "SKIN TEMP",
-                    value = skinDelta ?: "—",
-                    unit = if (skinDelta != null) "°C" else null,
-                    icon = Icons.Default.Thermostat,
-                    status = if (skinDelta != null) RangeStatus.BUILDING else RangeStatus.UNAVAILABLE,
-                    onClick = { viewModel.openMetricDetail(MetricDetailType.SKIN_TEMP) },
-                    modifier = Modifier.weight(1f)
-                )
+            // Row 3: Skin Temp (Nocturnal temperature deviation from baseline)
+            val rawDelta = resp?.skinTemperature?.averageDeltaCelsius
+            val skinDelta = rawDelta?.let {
+                val clean = if (kotlin.math.abs(it) < 0.05) 0.0 else it
+                "%+.1f".format(clean)
             }
+            PinnedMetricCard(
+                title = "SKIN TEMP",
+                value = skinDelta ?: "—",
+                unit = if (skinDelta != null) "°C" else null,
+                icon = Icons.Default.Thermostat,
+                status = if (skinDelta != null) RangeStatus.BUILDING else RangeStatus.UNAVAILABLE,
+                onClick = { viewModel.openMetricDetail(MetricDetailType.SKIN_TEMP) },
+                modifier = Modifier.fillMaxWidth()
+            )
         }
 
         Spacer(modifier = Modifier.height(28.dp))

@@ -106,21 +106,35 @@ class HealthMetricsRepository(
             emptyList()
         }
 
-        // Use a 24-hour previous-evening lookback for nocturnal vitals corresponding to this day's sleep
-        val vitalsWindowStart = startOfToday.minus(24, ChronoUnit.HOURS)
+        // Use a 30-day lookback for vitals to capture historical trends and recent nocturnal readings
+        val vitalsHistoryStart = startOfToday.minus(30, ChronoUnit.DAYS)
 
         val restingHr = try {
-            healthConnectManager.readRestingHeartRate(vitalsWindowStart, now, sourceFilter, effectiveDate, sleep)
+            healthConnectManager.readRestingHeartRate(vitalsHistoryStart, now, sourceFilter, effectiveDate, sleep)
         } catch (e: Exception) {
             errors.add(sanitizeErrorMessage("resting heart rate", e))
             null
         }
 
+        val restingHrHistory = try {
+            healthConnectManager.readRestingHeartRateHistory(vitalsHistoryStart, now, sourceFilter)
+        } catch (e: Exception) {
+            errors.add(sanitizeErrorMessage("resting heart rate history", e))
+            emptyList()
+        }
+
         val hrv = try {
-            healthConnectManager.readHrv(vitalsWindowStart, now, sourceFilter, effectiveDate, sleep)
+            healthConnectManager.readHrv(vitalsHistoryStart, now, sourceFilter, effectiveDate, sleep)
         } catch (e: Exception) {
             errors.add(sanitizeErrorMessage("HRV", e))
             null
+        }
+
+        val hrvHistory = try {
+            healthConnectManager.readHrvHistory(vitalsHistoryStart, now, sourceFilter)
+        } catch (e: Exception) {
+            errors.add(sanitizeErrorMessage("HRV history", e))
+            emptyList()
         }
 
         // Include samples from previous evening so nocturnal heart rate throughout the night is preserved
@@ -145,7 +159,7 @@ class HealthMetricsRepository(
         }
 
         val respiratory = try {
-            healthConnectManager.readRespiratory(vitalsWindowStart, now, sourceFilter, effectiveDate, sleep)
+            healthConnectManager.readRespiratory(vitalsHistoryStart, now, sourceFilter, effectiveDate, sleep)
         } catch (e: Exception) {
             errors.add(sanitizeErrorMessage("respiratory", e))
             null
@@ -233,6 +247,13 @@ class HealthMetricsRepository(
             rhr = finalRestingHr
         )
 
+        val readinessResult = HealthDataCalculations.calculateReadiness(
+            sleepHistory = sleepHistory,
+            todaySleep = finalSleep,
+            todayHrv = hrv,
+            todayRhr = finalRestingHr
+        )
+
         // Evaluate if Fitbit sync is needed (Fitbit source active but no records found)
         val isFitbitSource = sourceFilter != null && sourceFilter.contains("fitbit", ignoreCase = true)
         val hasAnyFitbitData = finalSleep != null || heartRate != null || finalRestingHr != null || hrv != null || finalActivity != null || respiratory != null
@@ -249,8 +270,12 @@ class HealthMetricsRepository(
             isFitbitSyncNeeded = isFitbitSyncNeeded,
             sleep = finalSleep,
             dailySleepHistory = sleepHistory,
+            readinessScore = readinessResult.score,
+            readinessLevel = readinessResult.levelLabel,
             restingHeartRate = finalRestingHr,
+            dailyRestingHrHistory = restingHrHistory,
             hrv = hrv,
+            dailyHrvHistory = hrvHistory,
             heartRate = heartRate,
             activity = finalActivity,
             respiratory = respiratory,
@@ -261,6 +286,17 @@ class HealthMetricsRepository(
             isCloudSyncActive = isCloudActive,
             errorMessages = errors
         )
+    }
+
+    suspend fun getLiveHeartRate(sourceFilter: String? = null): HeartRateMetric? = withContext(Dispatchers.IO) {
+        val now = Instant.now()
+        val zone = ZoneId.systemDefault()
+        val startOfToday = LocalDate.now().atStartOfDay(zone).toInstant()
+        try {
+            healthConnectManager.readHeartRate(startOfToday.minus(8, ChronoUnit.HOURS), now, sourceFilter)
+        } catch (e: Exception) {
+            null
+        }
     }
 
     internal fun sanitizeErrorMessage(metricName: String, e: Exception): String {

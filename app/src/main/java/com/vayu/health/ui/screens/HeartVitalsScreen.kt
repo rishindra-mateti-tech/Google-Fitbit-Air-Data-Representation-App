@@ -211,7 +211,7 @@ fun HeartVitalsScreen(
         val trendTitle = when (activeVital) {
             SelectedVitalTab.RESTING_HR -> "Resting Heart Rate Trend"
             SelectedVitalTab.HRV -> "HRV (RMSSD) Trend"
-            SelectedVitalTab.RESP_RATE -> "Respiratory Rate Trend"
+            SelectedVitalTab.RESP_RATE -> "Breathing Rate Trend"
             SelectedVitalTab.SPO2 -> "Blood Oxygen (SpO2) Trend"
             SelectedVitalTab.SKIN_TEMP -> "Skin Temperature Variation"
         }
@@ -314,8 +314,8 @@ fun HeartVitalsScreen(
 
             val respVal = resp?.breathsPerMinute
             MeasurementRow(
-                title = "Respiratory Rate",
-                value = respVal?.let { "%.1f br/min".format(it) } ?: "Data unavailable",
+                title = "Breathing Rate",
+                value = respVal?.let { "%.1f brpm".format(it) } ?: "Data unavailable",
                 status = if (respVal != null) RangeStatus.TYPICAL else RangeStatus.UNAVAILABLE,
                 accent = BaroReadinessTeal,
                 isSelected = activeVital == SelectedVitalTab.RESP_RATE,

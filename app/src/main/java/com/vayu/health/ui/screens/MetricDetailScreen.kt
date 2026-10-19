@@ -124,9 +124,8 @@ fun MetricDetailScreen(
             MetricDetailType.STEPS -> StepsDetailContent(state)
             MetricDetailType.RESTING_HR -> RestingHrDetailContent(state)
             MetricDetailType.HRV -> HrvDetailContent(state)
-            MetricDetailType.RESP_RATE -> RespRateDetailContent(state)
+            MetricDetailType.BREATHING_RATE -> BreathingRateDetailContent(state)
             MetricDetailType.SPO2 -> Spo2DetailContent(state)
-            MetricDetailType.RESP_TEMP -> RespTempDetailContent()
             MetricDetailType.SKIN_TEMP -> SkinTempDetailContent(state)
             MetricDetailType.ZONE_MINUTES -> ZoneMinutesDetailContent(state)
             MetricDetailType.STRESS -> StressDetailContent(state)
@@ -140,10 +139,15 @@ fun MetricDetailScreen(
 
 @Composable
 private fun ReadinessDetailContent(state: HealthDashboardState) {
+    val score = state.readinessScore
     val nightsLogged = state.dailySleepHistory.size
     val nightsRemaining = (7 - nightsLogged).coerceIn(1, 7)
     val nightsText = if (nightsRemaining == 1) "1 more night" else "$nightsRemaining more nights"
-    val bannerText = "CALIBRATING · $nightsRemaining MORE NIGHT${if (nightsRemaining == 1) "" else "S"} NEEDED"
+    val bannerText = if (score != null) {
+        "RECOVERY LEVEL · ${state.readinessLevel?.uppercase() ?: "OPTIMAL"}"
+    } else {
+        "CALIBRATING · $nightsRemaining MORE NIGHT${if (nightsRemaining == 1) "" else "S"} NEEDED"
+    }
 
     Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
         BaroCard(modifier = Modifier.fillMaxWidth(), padding = 20.dp) {
@@ -151,11 +155,11 @@ private fun ReadinessDetailContent(state: HealthDashboardState) {
                 modifier = Modifier.fillMaxWidth(),
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
-                // Large Grey Radial Tick Ring
+                // Large Circular Ring
                 BaroCircleGauge(
                     label = "READINESS",
-                    valueText = "—",
-                    progress = null,
+                    valueText = score?.toString() ?: "—",
+                    progress = score?.let { it / 100f },
                     accentColor = BaroReadinessTeal,
                     size = 110.dp,
                     strokeWidth = 10.dp
@@ -183,35 +187,51 @@ private fun ReadinessDetailContent(state: HealthDashboardState) {
                         modifier = Modifier
                             .size(7.dp)
                             .clip(CircleShape)
-                            .background(BaroZone3Orange)
+                            .background(if (score != null) BaroReadinessTeal else BaroZone3Orange)
                     )
                     Spacer(modifier = Modifier.width(8.dp))
                     Text(
                         text = bannerText,
                         fontSize = 11.sp,
                         fontWeight = FontWeight.Bold,
-                        color = BaroZone3Orange,
+                        color = if (score != null) BaroReadinessTeal else BaroZone3Orange,
                         letterSpacing = 0.5.sp
                     )
                 }
             }
         }
 
-        // Google Health Notice
+        // Google Health Notice / Summary
         BaroCard(modifier = Modifier.fillMaxWidth()) {
             Column {
-                Text("GOOGLE HEALTH READINESS CALIBRATION", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = BaroTextSecondary, letterSpacing = 0.8.sp)
+                val header = if (score != null) "READINESS RECOVERY ASSESSMENT" else "GOOGLE HEALTH READINESS CALIBRATION"
+                Text(header, fontSize = 11.sp, fontWeight = FontWeight.Bold, color = BaroTextSecondary, letterSpacing = 0.8.sp)
                 Spacer(modifier = Modifier.height(8.dp))
+                val mainText = if (score != null) {
+                    when (state.readinessLevel) {
+                        "Optimal" -> "Your body is primed for physical and mental demands today."
+                        "Good" -> "Your recovery is solid. You're ready to tackle your normal routine."
+                        "Moderate" -> "Recovery is steady, but balance higher exertion with pacing."
+                        else -> "Your body needs more recovery. Focus on rest and hydration today."
+                    }
+                } else {
+                    "To get your first daily readiness, wear your device to sleep for $nightsText."
+                }
                 Text(
-                    text = "To get your first daily readiness, wear your device to sleep for $nightsText.",
+                    text = mainText,
                     fontSize = 14.sp,
                     fontWeight = FontWeight.SemiBold,
                     color = BaroTextWhite,
                     lineHeight = 20.sp
                 )
                 Spacer(modifier = Modifier.height(8.dp))
+                val subText = if (score != null) {
+                    "Evaluated dynamically from your sleep restoration, nocturnal heart rate variability, and resting heart rate against your personalized baseline."
+                } else {
+                    "Google Health analyzes 7 consecutive nights of physiological recovery indicators to establish your personalized baseline."
+                }
                 Text(
-                    text = "Google Health analyzes 7 consecutive nights of physiological recovery indicators to establish your personalized baseline.",
+                    text = subText,
                     fontSize = 12.sp,
                     color = BaroTextMuted,
                     lineHeight = 17.sp
@@ -361,6 +381,7 @@ private fun StepsDetailContent(state: HealthDashboardState) {
 @Composable
 private fun RestingHrDetailContent(state: HealthDashboardState) {
     val rhr = state.restingHeartRate?.beatsPerMinute
+    val history = state.dailyRestingHrHistory.map { it.first to it.second.toDouble() }
     Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
         BaroCard(modifier = Modifier.fillMaxWidth(), padding = 18.dp) {
             Column {
@@ -372,40 +393,69 @@ private fun RestingHrDetailContent(state: HealthDashboardState) {
                 Text(rhrStatus, fontSize = 12.sp, color = if (rhr != null) BaroReadinessTeal else BaroTextMuted)
             }
         }
+
+        Vitals7DayBarCard(
+            title = "RESTING HEART RATE",
+            history = history,
+            unit = "bpm",
+            accentColor = BaroReadinessTeal,
+            formatValue = { "%.0f".format(it) }
+        )
     }
 }
 
 @Composable
 private fun HrvDetailContent(state: HealthDashboardState) {
     val hrv = state.hrv?.rmssdMillis
+    val history = state.dailyHrvHistory
     Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
         BaroCard(modifier = Modifier.fillMaxWidth(), padding = 18.dp) {
             Column {
-                Text("HEART RATE VARIABILITY (RMSSD)", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = BaroTextSecondary, letterSpacing = 0.8.sp)
+                Text("HEART RATE VARIABILITY (HRV)", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = BaroTextSecondary, letterSpacing = 0.8.sp)
                 Spacer(modifier = Modifier.height(8.dp))
                 Text(hrv?.let { "%.0f ms".format(it) } ?: "—", fontSize = 32.sp, fontWeight = FontWeight.Bold, color = BaroTextWhite)
                 Spacer(modifier = Modifier.height(6.dp))
-                val hrvStatus = if (hrv != null) "Building baseline · Needs multi-day nocturnal tracking" else "Data unavailable"
+                val hrvStatus = if (hrv != null) "Building baseline · Multi-day nocturnal tracking" else "Data unavailable"
                 Text(hrvStatus, fontSize = 12.sp, color = BaroTextMuted)
             }
         }
+
+        Vitals7DayBarCard(
+            title = "HRV (RMSSD)",
+            history = history,
+            unit = "ms",
+            accentColor = Color(0xFF8A70D6),
+            formatValue = { "%.0f".format(it) }
+        )
     }
 }
 
 @Composable
-private fun RespRateDetailContent(state: HealthDashboardState) {
+private fun BreathingRateDetailContent(state: HealthDashboardState) {
     val resp = state.respiratory?.breathsPerMinute
+    val history = state.respiratory?.dailyBreathingRateHistory ?: emptyList()
+    val isFallback = state.respiratory?.isBreathingRateHistoricalFallback == true
     Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
         BaroCard(modifier = Modifier.fillMaxWidth(), padding = 18.dp) {
             Column {
-                Text("RESPIRATORY RATE", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = BaroTextSecondary, letterSpacing = 0.8.sp)
+                Text("BREATHING RATE", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = BaroTextSecondary, letterSpacing = 0.8.sp)
                 Spacer(modifier = Modifier.height(8.dp))
-                Text(resp?.let { "%.1f br/min".format(it) } ?: "—", fontSize = 32.sp, fontWeight = FontWeight.Bold, color = BaroTextWhite)
+                Text(resp?.let { "%.1f brpm".format(it) } ?: "—", fontSize = 32.sp, fontWeight = FontWeight.Bold, color = BaroTextWhite)
                 Spacer(modifier = Modifier.height(6.dp))
-                val respStatus = if (resp != null) "✓ Typical · In normal sleeping range" else "Data unavailable"
+                val respStatus = if (resp != null) {
+                    if (isFallback) "Most recent recorded night · In normal sleeping range" else "✓ Typical · In normal sleeping range"
+                } else "Data unavailable"
                 Text(respStatus, fontSize = 12.sp, color = if (resp != null) BaroReadinessTeal else BaroTextMuted)
             }
         }
+
+        Vitals7DayBarCard(
+            title = "BREATHING RATE",
+            history = history,
+            unit = "brpm",
+            accentColor = BaroStrainBlue,
+            formatValue = { "%.1f".format(it) }
+        )
     }
 }
 
@@ -413,38 +463,36 @@ private fun RespRateDetailContent(state: HealthDashboardState) {
 private fun Spo2DetailContent(state: HealthDashboardState) {
     val rawSpo2 = state.respiratory?.spo2Percentage
     val spo2 = rawSpo2?.let { if (it <= 1.0) it * 100.0 else it }
+    val history = state.respiratory?.dailySpo2History ?: emptyList()
+    val isFallback = state.respiratory?.isSpo2HistoricalFallback == true
     Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
         BaroCard(modifier = Modifier.fillMaxWidth(), padding = 18.dp) {
             Column {
-                Text("OXYGEN SATURATION (SPO2)", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = BaroTextSecondary, letterSpacing = 0.8.sp)
+                Text("SpO2 (BLOOD OXYGEN)", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = BaroTextSecondary, letterSpacing = 0.8.sp)
                 Spacer(modifier = Modifier.height(8.dp))
                 Text(spo2?.let { "%.0f%%".format(it) } ?: "—", fontSize = 32.sp, fontWeight = FontWeight.Bold, color = BaroTextWhite)
                 Spacer(modifier = Modifier.height(6.dp))
-                val spo2Status = if (spo2 != null) "✓ Typical · Normal blood oxygen level" else "Data unavailable"
+                val spo2Status = if (spo2 != null) {
+                    if (isFallback) "Most recent recorded night · Normal blood oxygen level" else "✓ Typical · Normal blood oxygen level"
+                } else "Data unavailable"
                 Text(spo2Status, fontSize = 12.sp, color = if (spo2 != null) BaroReadinessTeal else BaroTextMuted)
             }
         }
-    }
-}
 
-@Composable
-private fun RespTempDetailContent() {
-    Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
-        BaroCard(modifier = Modifier.fillMaxWidth(), padding = 18.dp) {
-            Column {
-                Text("RESPIRATION TEMPERATURE / STABILITY", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = BaroTextSecondary, letterSpacing = 0.8.sp)
-                Spacer(modifier = Modifier.height(8.dp))
-                Text("—", fontSize = 32.sp, fontWeight = FontWeight.Bold, color = BaroTextWhite)
-                Spacer(modifier = Modifier.height(6.dp))
-                Text("Fitbit does not record separate respiration stability to Health Connect.", fontSize = 12.sp, color = BaroTextMuted)
-            }
-        }
+        Vitals7DayBarCard(
+            title = "SpO2",
+            history = history,
+            unit = "%",
+            accentColor = BaroReadinessTeal,
+            formatValue = { "%.0f".format(it) }
+        )
     }
 }
 
 @Composable
 private fun SkinTempDetailContent(state: HealthDashboardState) {
     val delta = state.respiratory?.skinTemperature?.averageDeltaCelsius
+    val history = state.respiratory?.dailySkinTempHistory ?: emptyList()
     Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
         BaroCard(modifier = Modifier.fillMaxWidth(), padding = 18.dp) {
             Column {
@@ -452,8 +500,91 @@ private fun SkinTempDetailContent(state: HealthDashboardState) {
                 Spacer(modifier = Modifier.height(8.dp))
                 Text(delta?.let { "%+.1f °C".format(it) } ?: "—", fontSize = 32.sp, fontWeight = FontWeight.Bold, color = BaroTextWhite)
                 Spacer(modifier = Modifier.height(6.dp))
-                val skinStatus = if (delta != null) "Building baseline · Needs multi-day nocturnal tracking" else "Data unavailable"
+                val skinStatus = if (delta != null) "Building baseline · Multi-day nocturnal tracking" else "Data unavailable"
                 Text(skinStatus, fontSize = 12.sp, color = BaroTextMuted)
+            }
+        }
+
+        Vitals7DayBarCard(
+            title = "SKIN TEMP VARIATION",
+            history = history,
+            unit = "°C",
+            accentColor = BaroHeartCoral,
+            formatValue = { "%+.1f".format(it) }
+        )
+    }
+}
+
+@Composable
+private fun Vitals7DayBarCard(
+    title: String,
+    history: List<Pair<java.time.LocalDate, Double>>,
+    unit: String,
+    accentColor: Color = BaroReadinessTeal,
+    formatValue: (Double) -> String = { "%.1f".format(it) }
+) {
+    val today = java.time.LocalDate.now()
+    val last7Days = (6 downTo 0).map { today.minusDays(it.toLong()) }
+    val historyMap = history.toMap()
+    val values = last7Days.map { date -> historyMap[date] }
+    val validValues = values.filterNotNull()
+    val avg = if (validValues.isNotEmpty()) validValues.average() else null
+    val min = validValues.minOrNull()
+    val max = validValues.maxOrNull()
+
+    BaroCard(modifier = Modifier.fillMaxWidth(), padding = 18.dp) {
+        Column {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = "$title · PAST 7 DAYS",
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = BaroTextSecondary,
+                    letterSpacing = 0.8.sp
+                )
+                if (avg != null) {
+                    Text(
+                        text = "AVG ${formatValue(avg)} $unit",
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = accentColor
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.height(14.dp))
+
+            val floatValues = values.map { it?.toFloat() ?: 0f }
+            BaroWeeklyBarChart(
+                dailyValues = floatValues,
+                barColor = accentColor,
+                todayIndex = 6,
+                height = 54.dp
+            )
+
+            Spacer(modifier = Modifier.height(12.dp))
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                val rangeStr = if (min != null && max != null) {
+                    "${formatValue(min)}–${formatValue(max)} $unit"
+                } else "Collecting history"
+                Text(
+                    text = "7-day range: $rangeStr",
+                    fontSize = 11.sp,
+                    color = BaroTextMuted
+                )
+                Text(
+                    text = "${validValues.size}/7 days recorded",
+                    fontSize = 11.sp,
+                    color = if (validValues.size >= 5) BaroReadinessTeal else BaroZone3Orange
+                )
             }
         }
     }
