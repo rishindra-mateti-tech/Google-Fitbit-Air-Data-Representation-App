@@ -208,7 +208,7 @@ fun BaroOverviewScreen(
                 )
             }
 
-            // RESILIENCE GAUGE (Google Health 3-pillar resilience)
+            // RESILIENCE GAUGE (Vayu on-device model)
             val resilience = state.resilience
             val resilienceLevel = resilience?.levelLabel ?: "Low"
             val resilienceProg = when (resilienceLevel) {

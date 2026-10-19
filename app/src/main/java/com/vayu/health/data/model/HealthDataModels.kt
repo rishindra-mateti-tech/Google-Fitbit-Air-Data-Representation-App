@@ -194,6 +194,9 @@ data class HealthDashboardState(
     val dailySleepHistory: List<DailySleepSummary> = emptyList(),
     val readinessScore: Int? = null,
     val readinessLevel: String? = null,
+    val readinessNightsLogged: Int = 0,
+    val readinessNightsRemaining: Int = 7,
+    val readinessSummaryText: String? = null,
     val restingHeartRate: RestingHeartRateMetric? = null,
     val dailyRestingHrHistory: List<Pair<LocalDate, Long>> = emptyList(),
     val hrv: HrvMetric? = null,
@@ -736,6 +739,7 @@ object HealthDataCalculations {
     data class ReadinessCalculationResult(
         val score: Int?,
         val levelLabel: String,
+        val nightsLogged: Int,
         val nightsRemaining: Int,
         val sleepComponentScore: Int,
         val hrvComponentScore: Int,
@@ -761,6 +765,7 @@ object HealthDataCalculations {
             return ReadinessCalculationResult(
                 score = null,
                 levelLabel = "Calibrating",
+                nightsLogged = distinctNightsLogged,
                 nightsRemaining = remaining,
                 sleepComponentScore = 0,
                 hrvComponentScore = 0,
@@ -782,6 +787,7 @@ object HealthDataCalculations {
             return ReadinessCalculationResult(
                 score = null,
                 levelLabel = "Incomplete Data",
+                nightsLogged = distinctNightsLogged,
                 nightsRemaining = 0,
                 sleepComponentScore = 0,
                 hrvComponentScore = 0,
@@ -811,6 +817,7 @@ object HealthDataCalculations {
         return ReadinessCalculationResult(
             score = compositeScore,
             levelLabel = level,
+            nightsLogged = distinctNightsLogged,
             nightsRemaining = 0,
             sleepComponentScore = sleepScore,
             hrvComponentScore = hrvScore,

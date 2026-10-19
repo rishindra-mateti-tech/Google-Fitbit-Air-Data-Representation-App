@@ -36,7 +36,7 @@ import com.vayu.health.ui.viewmodel.HealthDashboardViewModel
  * Dedicated detail screen for each individual clickable metric.
  * Addresses Issue 1 and Issue 5:
  * Each metric has its own distinct, beautifully formatted page with full context,
- * true Health Connect data, Whoop translations (for Readiness), and no hardcoded numbers.
+ * true Health Connect data and clearly labelled Vayu calculations where applicable.
  */
 @Composable
 fun MetricDetailScreen(
@@ -140,13 +140,13 @@ fun MetricDetailScreen(
 @Composable
 private fun ReadinessDetailContent(state: HealthDashboardState) {
     val score = state.readinessScore
-    val nightsLogged = state.dailySleepHistory.size
-    val nightsRemaining = (7 - nightsLogged).coerceIn(1, 7)
+    val readinessLevel = state.readinessLevel
+    val nightsRemaining = state.readinessNightsRemaining
     val nightsText = if (nightsRemaining == 1) "1 more night" else "$nightsRemaining more nights"
-    val bannerText = if (score != null) {
-        "RECOVERY LEVEL · ${state.readinessLevel?.uppercase() ?: "OPTIMAL"}"
-    } else {
-        "CALIBRATING · $nightsRemaining MORE NIGHT${if (nightsRemaining == 1) "" else "S"} NEEDED"
+    val bannerText = when {
+        score != null -> "RECOVERY LEVEL · ${readinessLevel?.uppercase() ?: "OPTIMAL"}"
+        readinessLevel == "Incomplete Data" -> "INCOMPLETE DATA"
+        else -> "CALIBRATING · $nightsRemaining MORE NIGHT${if (nightsRemaining == 1) "" else "S"} NEEDED"
     }
 
     Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
@@ -157,7 +157,7 @@ private fun ReadinessDetailContent(state: HealthDashboardState) {
             ) {
                 // Large Circular Ring
                 BaroCircleGauge(
-                    label = "READINESS",
+                    label = "READINESS*",
                     valueText = score?.toString() ?: "—",
                     progress = score?.let { it / 100f },
                     accentColor = BaroReadinessTeal,
@@ -168,7 +168,7 @@ private fun ReadinessDetailContent(state: HealthDashboardState) {
                 Spacer(modifier = Modifier.height(10.dp))
 
                 Text(
-                    text = "Recovery in Whoop",
+                    text = "Vayu recovery estimate*",
                     fontSize = 13.sp,
                     fontWeight = FontWeight.SemiBold,
                     color = BaroReadinessTeal
@@ -204,16 +204,15 @@ private fun ReadinessDetailContent(state: HealthDashboardState) {
         // Readiness Calibration Notice / Summary
         BaroCard(modifier = Modifier.fillMaxWidth()) {
             Column {
-                val header = if (score != null) "READINESS RECOVERY ASSESSMENT" else "READINESS CALIBRATION"
+                val header = when {
+                    score != null -> "READINESS RECOVERY ASSESSMENT"
+                    readinessLevel == "Incomplete Data" -> "READINESS INCOMPLETE DATA"
+                    else -> "READINESS CALIBRATION"
+                }
                 Text(header, fontSize = 11.sp, fontWeight = FontWeight.Bold, color = BaroTextSecondary, letterSpacing = 0.8.sp)
                 Spacer(modifier = Modifier.height(8.dp))
-                val mainText = if (score != null) {
-                    when (state.readinessLevel) {
-                        "Optimal" -> "Your body is primed for physical and mental demands today."
-                        "Good" -> "Your recovery is solid. You're ready to tackle your normal routine."
-                        "Moderate" -> "Recovery is steady, but balance higher exertion with pacing."
-                        else -> "Your body needs more recovery. Focus on rest and hydration today."
-                    }
+                val mainText = state.readinessSummaryText ?: if (score != null) {
+                    "Readiness is available."
                 } else {
                     "To complete baseline calibration, wear your device to sleep for $nightsText."
                 }
@@ -226,7 +225,9 @@ private fun ReadinessDetailContent(state: HealthDashboardState) {
                 )
                 Spacer(modifier = Modifier.height(8.dp))
                 val subText = if (score != null) {
-                    "Evaluated dynamically from your sleep restoration, nocturnal heart rate variability, and resting heart rate against your personalized baseline."
+                    "Vayu fixed-reference model using recorded sleep, HRV, and resting heart rate."
+                } else if (readinessLevel == "Incomplete Data") {
+                    "No score is shown until every required record is available for today."
                 } else {
                     "Vayu analyzes 7 distinct overnight sleep recordings to establish your baseline calibration without synthetic fallback data."
                 }
@@ -249,7 +250,7 @@ private fun ReadinessDetailContent(state: HealthDashboardState) {
                 }
                 Spacer(modifier = Modifier.height(8.dp))
                 Text(
-                    text = "Calculated on-device from your authentic Health Connect sleep, HRV, and resting heart rate data. Android Health Connect and the Google Health API do not export proprietary Readiness scores to third-party apps. If Google publishes a direct Readiness API in the future, Vayu will automatically display the direct score.",
+                    text = "Calculated on-device from your authentic Health Connect sleep, HRV, and resting heart rate data. Android Health Connect and the Google Health API do not export proprietary Readiness scores to third-party apps. A future direct API would require a Vayu update before its score could be displayed.",
                     fontSize = 11.5.sp,
                     color = BaroTextMuted,
                     lineHeight = 16.sp
@@ -257,7 +258,7 @@ private fun ReadinessDetailContent(state: HealthDashboardState) {
             }
         }
 
-        // What Impacts Readiness (Whoop Recovery Equivalence)
+        // Inputs used by the Vayu readiness model
         BaroCard(modifier = Modifier.fillMaxWidth()) {
             Column {
                 Text("WHAT IMPACTS READINESS (RECOVERY)", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = BaroTextSecondary, letterSpacing = 0.8.sp)
@@ -267,7 +268,7 @@ private fun ReadinessDetailContent(state: HealthDashboardState) {
                 Spacer(modifier = Modifier.height(10.dp))
                 FactorItem("Sleep Architecture", "Proportion of restorative Deep (SWS) and REM sleep stages.")
                 Spacer(modifier = Modifier.height(10.dp))
-                FactorItem("Resting Heart Rate", "Nocturnal resting pulse compared against your 30-day baseline.")
+                FactorItem("Resting Heart Rate", "Recorded resting pulse evaluated by Vayu's fixed-reference model.")
                 Spacer(modifier = Modifier.height(10.dp))
                 FactorItem("Heart Rate Variability (HRV)", "RMSSD nocturnal autonomic nervous system balance.")
             }
@@ -276,7 +277,7 @@ private fun ReadinessDetailContent(state: HealthDashboardState) {
         // Recovery Zones
         BaroCard(modifier = Modifier.fillMaxWidth()) {
             Column {
-                Text("RECOVERY ZONES (WHOOP SCALE)", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = BaroTextSecondary, letterSpacing = 0.8.sp)
+                Text("VAYU READINESS TIERS", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = BaroTextSecondary, letterSpacing = 0.8.sp)
                 Spacer(modifier = Modifier.height(12.dp))
                 ZoneDescRow("65–100%", "High (Green)", "Primed for high strain, exertion, and peak training.", BaroZone1Green)
                 Spacer(modifier = Modifier.height(8.dp))
