@@ -14,19 +14,25 @@ class HealthSourcePreferences(context: Context?) {
 
         const val KEY_GOOGLE_HEALTH_ENABLED = "google_health_enabled"
         const val KEY_GOOGLE_HEALTH_CLIENT_ID = "google_health_client_id"
-        const val KEY_GOOGLE_HEALTH_CLIENT_SECRET = "google_health_client_secret"
+        private const val KEY_GOOGLE_HEALTH_CLIENT_SECRET = "google_health_client_secret"
         const val KEY_GOOGLE_HEALTH_REFRESH_TOKEN = "google_health_refresh_token"
         const val KEY_GOOGLE_HEALTH_ACCESS_TOKEN = "google_health_access_token"
         const val KEY_GOOGLE_HEALTH_TOKEN_EXPIRY = "google_health_token_expiry"
         const val KEY_SLEEP_TARGET_MINUTES = "sleep_target_minutes"
 
         const val DEFAULT_CLIENT_ID = ""
-        const val DEFAULT_CLIENT_SECRET = ""
         const val DEFAULT_REFRESH_TOKEN = ""
         const val DEFAULT_SLEEP_TARGET_MINS = 480
     }
 
     private val prefs = context?.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+
+    init {
+        // Security rule: Never store OAuth client secret in SharedPreferences
+        if (prefs?.contains(KEY_GOOGLE_HEALTH_CLIENT_SECRET) == true) {
+            prefs.edit().remove(KEY_GOOGLE_HEALTH_CLIENT_SECRET).apply()
+        }
+    }
 
     fun getSelectedSource(): String? {
         // V2 is an honest Health Connect mirror: show records from every connected
@@ -57,9 +63,9 @@ class HealthSourcePreferences(context: Context?) {
         prefs?.edit()?.putBoolean(KEY_FIRST_RUN_COMPLETED, true)?.apply()
     }
 
-    // Google Health API & Cloud Sync Settings
+    // Google Health API & Cloud Sync Settings (Disabled by default per privacy/security policy)
     fun isGoogleHealthEnabled(): Boolean {
-        return prefs?.getBoolean(KEY_GOOGLE_HEALTH_ENABLED, true) ?: true
+        return prefs?.getBoolean(KEY_GOOGLE_HEALTH_ENABLED, false) ?: false
     }
 
     fun setGoogleHealthEnabled(enabled: Boolean) {
@@ -72,14 +78,6 @@ class HealthSourcePreferences(context: Context?) {
 
     fun setGoogleHealthClientId(clientId: String) {
         prefs?.edit()?.putString(KEY_GOOGLE_HEALTH_CLIENT_ID, clientId)?.apply()
-    }
-
-    fun getGoogleHealthClientSecret(): String {
-        return prefs?.getString(KEY_GOOGLE_HEALTH_CLIENT_SECRET, null)?.takeIf { it.isNotBlank() } ?: DEFAULT_CLIENT_SECRET
-    }
-
-    fun setGoogleHealthClientSecret(clientSecret: String) {
-        prefs?.edit()?.putString(KEY_GOOGLE_HEALTH_CLIENT_SECRET, clientSecret)?.apply()
     }
 
     fun getGoogleHealthRefreshToken(): String? {
@@ -97,6 +95,17 @@ class HealthSourcePreferences(context: Context?) {
             return null // Token expired
         }
         return prefs?.getString(KEY_GOOGLE_HEALTH_ACCESS_TOKEN, null)?.takeIf { it.isNotBlank() }
+    }
+
+    fun disconnectGoogleHealth() {
+        prefs?.edit()?.apply {
+            putBoolean(KEY_GOOGLE_HEALTH_ENABLED, false)
+            remove(KEY_GOOGLE_HEALTH_CLIENT_ID)
+            remove(KEY_GOOGLE_HEALTH_REFRESH_TOKEN)
+            remove(KEY_GOOGLE_HEALTH_ACCESS_TOKEN)
+            remove(KEY_GOOGLE_HEALTH_TOKEN_EXPIRY)
+            apply()
+        }
     }
 
     fun saveGoogleHealthTokens(accessToken: String, refreshToken: String?, expiresInSeconds: Long) {

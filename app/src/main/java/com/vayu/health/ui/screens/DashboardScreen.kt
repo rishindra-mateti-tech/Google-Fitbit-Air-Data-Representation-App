@@ -835,7 +835,7 @@ fun PrivacyPolicyDialog(onDismiss: () -> Unit) {
                 verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
                 Text(
-                    text = "• The Origin & Problem Statement: Built for WHOOP users transitioning to Fitbit who found the stock health UI cluttered and disorganized. While iOS users have Bevel, Android lacked a premium, dark liquid-glass dashboard for wearable biometrics. As a fitness enthusiast and Android developer, I reverse-engineered those UX philosophies to build Vayu.",
+                    text = "• The Origin & Problem Statement: Built for wearable users who found stock health apps cluttered and disorganized. While iOS users have Bevel, Android lacked a premium, dark liquid-glass dashboard for wearable biometrics. As a fitness enthusiast and Android developer, I designed Vayu to bring laser-focused clarity to Google Health Connect.",
                     fontSize = 13.sp,
                     color = VayuCyan,
                     lineHeight = 18.sp

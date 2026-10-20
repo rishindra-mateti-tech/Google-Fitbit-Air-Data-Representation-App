@@ -181,7 +181,7 @@ fun BaroOverviewScreen(
                 modifier = Modifier.clickable { onOpenTab(VayuTab.SLEEP) }
             ) {
                 BaroCircleGauge(
-                    label = "SLEEP",
+                    label = "SLEEP SCORE*",
                     valueText = sleepScoreStr,
                     progress = sleepProgress,
                     accentColor = BaroSleepBlue,
@@ -235,7 +235,7 @@ fun BaroOverviewScreen(
 
         Spacer(modifier = Modifier.height(10.dp))
         Text(
-            text = "*Calculated by Vayu from Health Connect vitals (Google Health does not export Readiness or Resilience in its API).",
+            text = "*Calculated on-device from Health Connect sleep, HRV, resting heart rate, and activity.",
             fontSize = 9.5.sp,
             color = BaroTextMuted,
             textAlign = androidx.compose.ui.text.style.TextAlign.Center,
@@ -243,6 +243,9 @@ fun BaroOverviewScreen(
         )
 
         Spacer(modifier = Modifier.height(20.dp))
+
+        val last7Days = (6 downTo 0).map { selectedDate.minusDays(it.toLong()) }
+        val dayLabels = last7Days.map { it.dayOfWeek.name.take(1) }
 
         // 3. 2x2 Metric Grid (Heart Rate, Steps, Zone Minutes, Stress)
         Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -353,8 +356,10 @@ fun BaroOverviewScreen(
                             color = BaroTextWhite
                         )
 
-                        val dailyZones = listOf(0f, 0f, 0f, 0f, 0f, (zoneMinutes ?: 0).toFloat(), 0f)
-                        BaroWeeklyBarChart(dailyValues = dailyZones, height = 44.dp, todayIndex = 5)
+                        val dailyZones: List<Float?> = last7Days.mapIndexed { idx, _ ->
+                            if (idx == 6) zoneMinutes?.toFloat() else null
+                        }
+                        BaroWeeklyBarChart(dailyNullableValues = dailyZones, labels = dayLabels, height = 44.dp, todayIndex = 6)
 
                         val zoneSubtitle = if (zoneMinutes != null) "Active Heart Rate duration" else "Data unavailable"
                         Text(zoneSubtitle, fontSize = 9.5.sp, fontWeight = FontWeight.Medium, color = BaroTextMuted, maxLines = 1)
@@ -392,8 +397,9 @@ fun BaroOverviewScreen(
                             }
                         }
 
-                        val dailyCal = listOf(0f, 0f, 0f, 0f, 0f, (totalCal ?: 0).toFloat(), 0f)
-                        BaroWeeklyBarChart(dailyValues = dailyCal, height = 44.dp, todayIndex = 5)
+                        val calMap = state.dailyCaloriesHistory.toMap()
+                        val dailyCal: List<Float?> = last7Days.map { date -> calMap[date]?.toFloat() }
+                        BaroWeeklyBarChart(dailyNullableValues = dailyCal, labels = dayLabels, height = 44.dp, todayIndex = 6, barColor = BaroZone3Orange)
 
                         val calSubtitle = if (activeCal != null && activeCal > 0) "Active: $activeCal kcal" else if (totalCal != null) "Total energy expenditure" else "No calorie records"
                         Text(calSubtitle, fontSize = 9.5.sp, fontWeight = FontWeight.Medium, color = BaroTextMuted, maxLines = 1)
@@ -429,7 +435,7 @@ fun BaroOverviewScreen(
                 horizontalArrangement = Arrangement.spacedBy(12.dp)
             ) {
                 val rhrVal = rhr?.beatsPerMinute
-                PinnedMetricCard(
+                HealthMetricCard(
                     title = "RESTING HR",
                     value = rhrVal?.toString() ?: "—",
                     unit = if (rhrVal != null) "bpm" else null,
@@ -439,7 +445,7 @@ fun BaroOverviewScreen(
                     modifier = Modifier.weight(1f)
                 )
                 val hrvVal = hrv?.rmssdMillis
-                PinnedMetricCard(
+                HealthMetricCard(
                     title = "HRV",
                     value = hrvVal?.let { "%.0f".format(it) } ?: "—",
                     unit = if (hrvVal != null) "ms" else null,
@@ -456,7 +462,7 @@ fun BaroOverviewScreen(
                 horizontalArrangement = Arrangement.spacedBy(12.dp)
             ) {
                 val respBpm = resp?.breathsPerMinute
-                PinnedMetricCard(
+                HealthMetricCard(
                     title = "BREATHING RATE",
                     value = respBpm?.let { "%.1f".format(it) } ?: "—",
                     unit = if (respBpm != null) "br/min" else null,
@@ -468,7 +474,7 @@ fun BaroOverviewScreen(
 
                 val spo2Val = resp?.spo2Percentage
                 val cleanSpo2 = spo2Val?.let { if (it <= 1.0) it * 100.0 else it }
-                PinnedMetricCard(
+                HealthMetricCard(
                     title = "SpO2",
                     value = cleanSpo2?.let { "%.0f".format(it) } ?: "—",
                     unit = if (cleanSpo2 != null) "%" else null,
@@ -485,7 +491,7 @@ fun BaroOverviewScreen(
                 val clean = if (kotlin.math.abs(it) < 0.05) 0.0 else it
                 "%+.1f".format(clean)
             }
-            PinnedMetricCard(
+            HealthMetricCard(
                 title = "SKIN TEMP",
                 value = skinDelta ?: "—",
                 unit = if (skinDelta != null) "°C" else null,
@@ -530,13 +536,13 @@ fun BaroOverviewScreen(
 }
 
 /**
- * Pinned Metric Card matching Screenshot 5 exactly:
+ * Health Metric Card matching the Baro Design System:
  * Header: Icon + uppercase label
  * Middle: Value + Unit on left, Vertical Range Pill capsule on right!
  * Bottom: Status label on left (e.g. ^ Higher in orange, ✓ Typical in teal, Building baseline in grey)
  */
 @Composable
-private fun PinnedMetricCard(
+private fun HealthMetricCard(
     title: String,
     value: String,
     unit: String?,

@@ -44,7 +44,34 @@ data class SleepMetric(
     val recordedScore: Int? = null,
     val isNap: Boolean = false,
     val totalDailySleepMinutes: Long? = null,
-    val allDaySessions: List<SleepMetric> = emptyList()
+    val allDaySessions: List<SleepMetric> = emptyList(),
+    val sleepEfficiencyPercentage: Int? = null,
+    val sleepingHeartRateAvg: Long? = null,
+    val restorationDipBpm: Long? = null
+)
+
+enum class TimeRangeTab(val label: String, val days: Int) {
+    DAY("D", 1),
+    WEEK("W", 7),
+    MONTH("M", 30),
+    THREE_MONTHS("3M", 90),
+    YEAR("Y", 365)
+}
+
+data class HistoricalMetricPoint(
+    val date: LocalDate,
+    val value: Double?,
+    val timestamp: Instant? = null
+)
+
+data class HistoricalMetricSeries(
+    val points: List<HistoricalMetricPoint>,
+    val unit: String,
+    val baselineMin: Double? = null,
+    val baselineMax: Double? = null,
+    val average: Double? = null,
+    val min: Double? = null,
+    val max: Double? = null
 )
 
 data class DailySleepSummary(
@@ -141,7 +168,8 @@ data class SleepQualityBreakdown(
     val interruptionsMinutes: Long,
     val interruptionsCount: Int,
     val interruptionsStatus: String,
-    val sleepingHeartRateAvg: Long?
+    val sleepingHeartRateAvg: Long?,
+    val outOfRangeCount: Int = 0
 )
 
 data class ResilienceMetric(
@@ -209,6 +237,9 @@ data class HealthDashboardState(
     val rawRecords: List<RawHealthRecord> = emptyList(),
     val isSkinTemperatureSupported: Boolean = false,
     val isCloudSyncActive: Boolean = false,
+    val dailyStepsHistory: List<Pair<LocalDate, Long>> = emptyList(),
+    val dailyCaloriesHistory: List<Pair<LocalDate, Double>> = emptyList(),
+    val selectedTimeRange: TimeRangeTab = TimeRangeTab.DAY,
     val errorMessages: List<String> = emptyList()
 )
 
@@ -640,7 +671,8 @@ object HealthDataCalculations {
             interruptionsMinutes = interruptionsMins,
             interruptionsCount = interruptionsCount,
             interruptionsStatus = interruptionsStatus,
-            sleepingHeartRateAvg = sleepingHrAvg
+            sleepingHeartRateAvg = sleepingHrAvg,
+            outOfRangeCount = listOf(timeToSoundSleepStatus, soundSleepStatus, restlessnessStatus, interruptionsStatus).count { it != "In range" }
         )
     }
 
@@ -748,12 +780,16 @@ object HealthDataCalculations {
         val sleepComponentScore: Int,
         val hrvComponentScore: Int,
         val rhrComponentScore: Int,
-        val summaryText: String
+        val summaryText: String,
+        val isPersonalBaselineUsed: Boolean = false,
+        val formulaVersion: String = "v1.2 (on-device)"
     )
 
     /**
      * Evaluates Vayu Readiness* on-device from authentic Health Connect records:
      * - Requires exactly 7 distinct overnight sleep dates to establish baseline calibration.
+     * - Evaluates against local personal baseline when sufficient history exists (7+ real nights).
+     * - Uses fixed physiological reference state if history is still building.
      * - ZERO fake fallback values: If sleep, HRV, or Resting HR is missing on the day, returns
      *   an explicit Incomplete Data state without inventing synthetic 420m, 48ms, or 68bpm numbers.
      */
@@ -761,7 +797,9 @@ object HealthDataCalculations {
         sleepHistory: List<DailySleepSummary>,
         todaySleep: SleepMetric?,
         todayHrv: HrvMetric?,
-        todayRhr: RestingHeartRateMetric?
+        todayRhr: RestingHeartRateMetric?,
+        historicalHrv: List<Pair<LocalDate, Double>> = emptyList(),
+        historicalRhr: List<Pair<LocalDate, Long>> = emptyList()
     ): ReadinessCalculationResult {
         val distinctNightsLogged = sleepHistory.map { it.date }.distinct().size
         if (distinctNightsLogged < 7) {
@@ -800,9 +838,30 @@ object HealthDataCalculations {
             )
         }
 
-        val sleepScore = todaySleep.recordedScore ?: ((actualSleepMins / 480.0) * 100.0).roundToInt().coerceIn(40, 100)
-        val hrvScore = ((hrvVal / 48.0) * 85.0).roundToInt().coerceIn(30, 100)
-        val rhrScore = (100 - ((rhrVal - 58).coerceAtLeast(0) * 2)).toInt().coerceIn(30, 100)
+        // Check for sufficient real historical data to compute an authentic personal baseline
+        val sleepBaselines = sleepHistory.mapNotNull { it.actualSleepMinutes }.filter { it in 180..720 }
+        val hrvBaselines = historicalHrv.map { it.second }.filter { it > 5.0 }
+        val rhrBaselines = historicalRhr.map { it.second }.filter { it in 35..120 }
+
+        val hasPersonalBaseline = sleepBaselines.size >= 7 && hrvBaselines.size >= 7 && rhrBaselines.size >= 7
+        val sleepScore: Int
+        val hrvScore: Int
+        val rhrScore: Int
+
+        if (hasPersonalBaseline) {
+            val personalSleepAvg = sleepBaselines.average()
+            val personalHrvAvg = hrvBaselines.average()
+            val personalRhrAvg = rhrBaselines.average()
+
+            sleepScore = todaySleep.recordedScore ?: ((actualSleepMins / personalSleepAvg) * 100.0).roundToInt().coerceIn(30, 100)
+            hrvScore = ((hrvVal / personalHrvAvg) * 80.0).roundToInt().coerceIn(20, 100)
+            rhrScore = (100 - ((rhrVal - personalRhrAvg) * 2.5)).roundToInt().coerceIn(20, 100)
+        } else {
+            // Standard fixed physiological reference ranges until complete history is accumulated
+            sleepScore = todaySleep.recordedScore ?: ((actualSleepMins / 480.0) * 100.0).roundToInt().coerceIn(40, 100)
+            hrvScore = ((hrvVal / 48.0) * 85.0).roundToInt().coerceIn(30, 100)
+            rhrScore = (100 - ((rhrVal - 58).coerceAtLeast(0) * 2)).toInt().coerceIn(30, 100)
+        }
 
         val compositeScore = (sleepScore * 0.40 + hrvScore * 0.35 + rhrScore * 0.25).roundToInt().coerceIn(1, 100)
         val level = when {
@@ -826,7 +885,53 @@ object HealthDataCalculations {
             sleepComponentScore = sleepScore,
             hrvComponentScore = hrvScore,
             rhrComponentScore = rhrScore,
-            summaryText = summary
+            summaryText = summary,
+            isPersonalBaselineUsed = hasPersonalBaseline,
+            formulaVersion = "v1.2 (on-device)"
+        )
+    }
+
+    /**
+     * Builds a truthful HistoricalMetricSeries for the selected TimeRangeTab.
+     * Missing days are strictly preserved as null without inserting fake zeros.
+     */
+    fun buildHistoricalSeries(
+        history: List<Pair<LocalDate, Double>>,
+        targetDate: LocalDate = LocalDate.now(),
+        rangeTab: TimeRangeTab,
+        unit: String
+    ): HistoricalMetricSeries {
+        val daysCount = rangeTab.days
+        val historyMap = history.toMap()
+        val dates = (daysCount - 1 downTo 0).map { targetDate.minusDays(it.toLong()) }
+        val points = dates.map { date ->
+            HistoricalMetricPoint(
+                date = date,
+                value = historyMap[date]
+            )
+        }
+        val validValues = points.mapNotNull { it.value }
+        val avg = if (validValues.isNotEmpty()) validValues.average() else null
+        val min = validValues.minOrNull()
+        val max = validValues.maxOrNull()
+
+        val baseline = if (validValues.size >= 3) {
+            val sorted = validValues.sorted()
+            val q1 = sorted[(sorted.size * 0.25).toInt()]
+            val q3 = sorted[(sorted.size * 0.75).toInt().coerceAtMost(sorted.lastIndex)]
+            Pair(q1, q3)
+        } else if (validValues.isNotEmpty()) {
+            Pair(validValues.minOrNull(), validValues.maxOrNull())
+        } else null
+
+        return HistoricalMetricSeries(
+            points = points,
+            unit = unit,
+            baselineMin = baseline?.first,
+            baselineMax = baseline?.second,
+            average = avg,
+            min = min,
+            max = max
         )
     }
 }

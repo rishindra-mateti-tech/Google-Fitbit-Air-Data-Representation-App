@@ -239,60 +239,98 @@ class MainActivity : ComponentActivity() {
                                 }
                             }
 
-                            // Active Screen Content or Dedicated Metric Detail
-                            if (activeMetricDetail != null) {
-                                MetricDetailScreen(
-                                    metricType = activeMetricDetail!!,
-                                    state = uiState,
-                                    viewModel = viewModel,
-                                    onBack = { viewModel.closeMetricDetail() },
-                                    modifier = Modifier
-                                        .weight(1f)
-                                        .fillMaxWidth()
-                                )
-                            } else {
-                                AnimatedContent(
-                                    modifier = Modifier
-                                        .weight(1f)
-                                        .fillMaxWidth(),
-                                    targetState = selectedTab,
-                                    transitionSpec = { fadeIn() togetherWith fadeOut() },
-                                    label = "Vayu screen transition"
-                                ) {
-                                    when (it) {
-                                        VayuTab.OVERVIEW -> BaroOverviewScreen(
-                                            state = uiState,
-                                            viewModel = viewModel,
-                                            onOpenTab = { selectedTab = it }
-                                        )
-                                        VayuTab.SLEEP -> SleepScreen(
-                                            state = uiState,
-                                            viewModel = viewModel
-                                        )
-                                        VayuTab.VITALS -> HeartVitalsScreen(
-                                            state = uiState,
-                                            viewModel = viewModel
-                                        )
-                                        VayuTab.ACTIVITY -> ActivityScreen(
-                                            state = uiState,
-                                            viewModel = viewModel
-                                        )
-                                        VayuTab.INSPECTOR -> InspectorScreen(
-                                            state = uiState,
-                                            viewModel = viewModel
-                                        )
+                            // Handle Android system back gesture/button for detail deep-dives
+                            BackHandler(enabled = activeMetricDetail != null) {
+                                viewModel.closeMetricDetail()
+                            }
+
+                            // Active Screen Content or Dedicated Metric Detail with smooth spring animations
+                            AnimatedContent(
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .fillMaxWidth(),
+                                targetState = activeMetricDetail,
+                                transitionSpec = {
+                                    if (targetState != null) {
+                                        (androidx.compose.animation.slideInVertically(
+                                            animationSpec = androidx.compose.animation.core.spring(stiffness = androidx.compose.animation.core.Spring.StiffnessMediumLow)
+                                        ) { it / 6 } + fadeIn(androidx.compose.animation.core.tween(250)))
+                                            .togetherWith(fadeOut(androidx.compose.animation.core.tween(150)))
+                                    } else {
+                                        fadeIn(androidx.compose.animation.core.tween(200))
+                                            .togetherWith(
+                                                androidx.compose.animation.slideOutVertically(
+                                                    animationSpec = androidx.compose.animation.core.spring(stiffness = androidx.compose.animation.core.Spring.StiffnessMediumLow)
+                                                ) { it / 6 } + fadeOut(androidx.compose.animation.core.tween(200))
+                                            )
+                                    }
+                                },
+                                label = "VayuScreenOrDetailTransition"
+                            ) { detailType ->
+                                if (detailType != null) {
+                                    MetricDetailScreen(
+                                        metricType = detailType,
+                                        state = uiState,
+                                        viewModel = viewModel,
+                                        onBack = { viewModel.closeMetricDetail() },
+                                        modifier = Modifier.fillMaxSize()
+                                    )
+                                } else {
+                                    AnimatedContent(
+                                        modifier = Modifier.fillMaxSize(),
+                                        targetState = selectedTab,
+                                        transitionSpec = {
+                                            (fadeIn(androidx.compose.animation.core.tween(220, delayMillis = 40)) +
+                                             androidx.compose.animation.scaleIn(initialScale = 0.98f, animationSpec = androidx.compose.animation.core.tween(220)))
+                                                .togetherWith(fadeOut(androidx.compose.animation.core.tween(160)))
+                                        },
+                                        label = "VayuTabTransition"
+                                    ) { tab ->
+                                        when (tab) {
+                                            VayuTab.OVERVIEW -> BaroOverviewScreen(
+                                                state = uiState,
+                                                viewModel = viewModel,
+                                                onOpenTab = { selectedTab = it }
+                                            )
+                                            VayuTab.SLEEP -> SleepScreen(
+                                                state = uiState,
+                                                viewModel = viewModel
+                                            )
+                                            VayuTab.VITALS -> HeartVitalsScreen(
+                                                state = uiState,
+                                                viewModel = viewModel
+                                            )
+                                            VayuTab.ACTIVITY -> ActivityScreen(
+                                                state = uiState,
+                                                viewModel = viewModel
+                                            )
+                                            VayuTab.INSPECTOR -> InspectorScreen(
+                                                state = uiState,
+                                                viewModel = viewModel
+                                            )
+                                        }
                                     }
                                 }
                             }
 
-                            // Floating Baro Bottom Navigation
-                            BaroFloatingNavBar(
-                                selectedTab = selectedTab,
-                                onTabSelected = { selectedTab = it },
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .navigationBarsPadding()
-                            )
+                            // Floating Baro Bottom Navigation (smooth entrance/exit during deep-dive detail screen)
+                            androidx.compose.animation.AnimatedVisibility(
+                                visible = activeMetricDetail == null,
+                                enter = androidx.compose.animation.slideInVertically(
+                                    animationSpec = androidx.compose.animation.core.spring(stiffness = androidx.compose.animation.core.Spring.StiffnessMediumLow)
+                                ) { it } + fadeIn(),
+                                exit = androidx.compose.animation.slideOutVertically(
+                                    animationSpec = androidx.compose.animation.core.spring(stiffness = androidx.compose.animation.core.Spring.StiffnessMediumLow)
+                                ) { it } + fadeOut()
+                            ) {
+                                BaroFloatingNavBar(
+                                    selectedTab = selectedTab,
+                                    onTabSelected = { selectedTab = it },
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .navigationBarsPadding()
+                                )
+                            }
                         }
                     }
                 }

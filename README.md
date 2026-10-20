@@ -8,14 +8,14 @@
 [![Privacy](https://img.shields.io/badge/Privacy-On--Device%20First-00E676)](#-biometric-privacy--direct-cloud-sync-architecture)
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
 
-A private, high-performance personal health dashboard for Android (optimized for Samsung Galaxy S25 Ultra). Vayu connects directly to **Google Health Connect** to present your authentic Fitbit wearable measurements in an ultra-clean, Bevel- and WHOOP-inspired dark liquid-glass interface.
+A private, high-performance personal health dashboard for Android (optimized for Samsung Galaxy S25 Ultra). Vayu connects directly to **Google Health Connect** to present your authentic Fitbit wearable measurements in an ultra-clean, refined dark liquid-glass interface.
 
 ---
 
 ## 🎯 The Problem Statement & Origin Story
 
-### 1. The WHOOP-to-Fitbit UX Friction
-Athletes and fitness enthusiasts who have tracked their physiology with **WHOOP** develop a deep appreciation for laser-focused biometric visualization—clean sleep staging, clear nocturnal heart rate variability (HRV), and resting heart rate trends without clutter. 
+### 1. The Wearable Biometric Visualization Gap
+Athletes and fitness enthusiasts who track their physiology develop a deep appreciation for laser-focused biometric visualization—clean sleep staging, clear nocturnal heart rate variability (HRV), and resting heart rate trends without clutter. 
 
 However, when migrating to **Google / Fitbit hardware**, users often face a frustrating user experience:
 * The stock Fitbit app can feel commercialized, bloated with subscription prompts, and disorganized.
@@ -28,7 +28,7 @@ On iOS, apps like **Bevel Health** (formerly Superset) solved this exact problem
 
 ### 3. The Developer's Exploration: Reverse-Engineering Benchmark UX
 As a software engineer and dedicated fitness enthusiast, this project was born directly where personal passion and software development intersect:
-* I set out to understand how benchmark apps like WHOOP and Bevel structure data hierarchy and visual feedback.
+* I set out to understand how modern health dashboards structure data hierarchy and visual feedback.
 * By analyzing and reverse-engineering their core UX philosophies, I designed a native Android application—**Vayu ("Inspired by Air")**—built with Jetpack Compose and Material 3, tailored specifically for top-tier Android hardware like the Samsung Galaxy S25 Ultra.
 
 ---
@@ -79,7 +79,7 @@ Engineered for Samsung's Dynamic AMOLED 2X displays (Samsung Galaxy S25 Ultra):
 * **Backgrounds**: Deep OLED obsidian (`#000000`) with elevated card surfaces (`#121214` to `#18181C`) and crisp borders (`#242428`).
 * **Hero Tri-Arc Gauges**:
   * 🔵 **Sleep Quality Gauge**: 270-degree arc opening at bottom (`#5B9BD5`) displaying sleep score and restorative status.
-  * 🟢 **Readiness (Recovery)**: Radial dashed baseline circle (`#00D4AA`) with Whoop recovery equivalence subtext.
+  * 🟢 **Readiness (Recovery)**: Radial dashed baseline circle (`#00D4AA`) with on-device recovery subtext.
   * 🩵 **Strain Gauge**: 270-degree arc (`#4DA6FF`) with custom white indicator needle tick mark.
 * **2x2 Core Metric Grid**:
   * **Heart Rate**: Live BPM with smooth cubic Bézier red ECG sparkline curve (`#FF5252`) and resting pulse footnote.
@@ -87,10 +87,10 @@ Engineered for Samsung's Dynamic AMOLED 2X displays (Samsung Galaxy S25 Ultra):
   * **Zone Minutes**: Active cardio minutes with 7-day weekly bars (S S M T W T F) and active status dot (`#00D4AA`).
   * **Stress**: Speedometer with 21 radial tick marks across a 180-degree arc and indicator needle (`#00D4AA` -> `#FFA726` -> `#FF5252`).
 * **Pinned 2-Column Metrics**:
-  * Resting Heart Rate, HRV, Respiratory Rate, SpO₂, Respiration Temp, and Skin Temperature variation.
+  * Resting Heart Rate, HRV, Respiratory Rate, SpO₂, and Skin Temperature variation.
   * Each card features a custom **Vertical Baseline Range Pill** showing the user's 30-night typical range band and today's reading status (`✓ Typical`, `^ Higher`, `v Lower`, or `Building baseline`).
 * **Detail Architecture**:
-  * **Individual Metric Detail Screens**: Every card on the dashboard and vitals screen has its own dedicated screen (Readiness/Recovery with calibration state, Continuous Heart Rate with live pulse indicator, Steps distribution, Resting HR, HRV, Respiratory Rate, SpO₂, Respiration Temp, Skin Temp variation, Zone Minutes, and Stress).
+  * **Individual Metric Detail Screens**: Every card on the dashboard and vitals screen has its own dedicated screen (Readiness/Recovery with calibration state, Continuous Heart Rate with live pulse indicator, Steps distribution, Resting HR, HRV, Respiratory Rate, SpO₂, Skin Temp variation, Zone Minutes, and Stress).
   * **System Back Navigation**: Native predictive back gesture support navigates seamlessly one level back rather than exiting the application.
   * **Interactive Multi-Day Stepper**: `< Today, 16 Oct >` controls across all screens allow traversing past Health Connect windows accurately.
   * **Sleep**: 4-lane Hypnogram swim-lane timeline (Awake, REM, Light, Deep), proportional breakdown bar, and overnight HR curve.

@@ -99,15 +99,15 @@ class HealthMetricsRepository(
             null
         }
 
+        // Use a 365-day (1 year) lookback for vitals, sleep, and activity to capture complete historical trends across D, W, M, 3M, and 1Y
+        val vitalsHistoryStart = startOfToday.minus(365, ChronoUnit.DAYS)
+
         val sleepHistory = try {
-            healthConnectManager.readSleepHistory(historyStart, now, sourceFilter)
+            healthConnectManager.readSleepHistory(vitalsHistoryStart, now, sourceFilter)
         } catch (e: Exception) {
             errors.add(sanitizeErrorMessage("sleep history", e))
             emptyList()
         }
-
-        // Use a 30-day lookback for vitals to capture historical trends and recent nocturnal readings
-        val vitalsHistoryStart = startOfToday.minus(30, ChronoUnit.DAYS)
 
         val restingHr = try {
             healthConnectManager.readRestingHeartRate(vitalsHistoryStart, now, sourceFilter, effectiveDate, sleep)
@@ -134,6 +134,18 @@ class HealthMetricsRepository(
             healthConnectManager.readHrvHistory(vitalsHistoryStart, now, sourceFilter)
         } catch (e: Exception) {
             errors.add(sanitizeErrorMessage("HRV history", e))
+            emptyList()
+        }
+
+        val dailyStepsHistory = try {
+            healthConnectManager.readStepsHistory(vitalsHistoryStart, now, sourceFilter)
+        } catch (e: Exception) {
+            emptyList()
+        }
+
+        val dailyCaloriesHistory = try {
+            healthConnectManager.readCaloriesHistory(vitalsHistoryStart, now, sourceFilter)
+        } catch (e: Exception) {
             emptyList()
         }
 
@@ -212,33 +224,30 @@ class HealthMetricsRepository(
             }
         }
 
-        // Fallback for Resting Heart Rate if Health Connect has no RestingHeartRateRecord but pulse samples exist
-        var finalRestingHr = restingHr
-        if (finalRestingHr == null && heartRate != null && heartRate.samples.isNotEmpty()) {
-            val sleepSamples = if (finalSleep != null) {
-                heartRate.samples.filter { !it.time.isBefore(finalSleep.startTime) && !it.time.isAfter(finalSleep.endTime) }
-            } else emptyList()
-
-            val derivedBpm = if (sleepSamples.isNotEmpty()) {
-                val sleepingAvg = sleepSamples.map { it.beatsPerMinute }.average()
-                (sleepingAvg + 6.0).toLong().coerceIn(40L, 120L)
-            } else {
-                val sortedBpm = heartRate.samples.map { it.beatsPerMinute }.sorted()
-                val p10Index = (sortedBpm.size * 0.10).toInt().coerceIn(0, sortedBpm.lastIndex)
-                sortedBpm[p10Index].coerceIn(40L, 120L)
-            }
-
-            finalRestingHr = RestingHeartRateMetric(
-                beatsPerMinute = derivedBpm,
-                timestamp = heartRate.timestamp ?: now,
-                sourcePackage = heartRate.sourcePackage
-            )
-        }
+        // Strictly truthful resting heart rate directly from Health Connect (zero synthetic fallbacks)
+        val finalRestingHr = restingHr
 
         val sleepQuality = HealthDataCalculations.calculateSleepQuality(
             sleep = finalSleep,
             nocturnalHeartRateSamples = heartRate?.samples ?: emptyList()
         )
+
+        val currentSleepSnapshot = finalSleep
+        if (currentSleepSnapshot != null) {
+            val actualMins = currentSleepSnapshot.actualSleepDurationMinutes
+            val eff = if (actualMins != null && currentSleepSnapshot.sessionElapsedMinutes > 0) {
+                ((actualMins.toDouble() / currentSleepSnapshot.sessionElapsedMinutes) * 100).toInt().coerceIn(10, 100)
+            } else null
+            val sleepingAvg = sleepQuality?.sleepingHeartRateAvg
+            val dip = if (sleepingAvg != null && finalRestingHr != null) {
+                (finalRestingHr.beatsPerMinute - sleepingAvg)
+            } else null
+            finalSleep = currentSleepSnapshot.copy(
+                sleepEfficiencyPercentage = eff,
+                sleepingHeartRateAvg = sleepingAvg,
+                restorationDipBpm = dip
+            )
+        }
 
         val resilience = HealthDataCalculations.calculateResilience(
             sleep = finalSleep,
@@ -251,7 +260,9 @@ class HealthMetricsRepository(
             sleepHistory = sleepHistory,
             todaySleep = finalSleep,
             todayHrv = hrv,
-            todayRhr = finalRestingHr
+            todayRhr = finalRestingHr,
+            historicalHrv = hrvHistory,
+            historicalRhr = restingHrHistory
         )
 
         // Evaluate if Fitbit sync is needed (Fitbit source active but no records found)
@@ -286,6 +297,8 @@ class HealthMetricsRepository(
             dailyRestingHrHistory = restingHrHistory,
             hrv = hrv,
             dailyHrvHistory = hrvHistory,
+            dailyStepsHistory = dailyStepsHistory,
+            dailyCaloriesHistory = dailyCaloriesHistory,
             heartRate = heartRate,
             activity = finalActivity,
             respiratory = respiratory,

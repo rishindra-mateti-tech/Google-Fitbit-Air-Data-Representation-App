@@ -6,6 +6,7 @@ import com.vayu.health.data.HealthMetricsRepository
 import com.vayu.health.data.HealthSourcePreferences
 import com.vayu.health.data.model.HealthDashboardState
 import com.vayu.health.data.model.MetricDetailType
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -36,6 +37,9 @@ class HealthDashboardViewModel(
     private val _activeMetricDetail = MutableStateFlow<MetricDetailType?>(null)
     val activeMetricDetail: StateFlow<MetricDetailType?> = _activeMetricDetail.asStateFlow()
 
+    private val _selectedTimeRange = MutableStateFlow(com.vayu.health.data.model.TimeRangeTab.DAY)
+    val selectedTimeRange: StateFlow<com.vayu.health.data.model.TimeRangeTab> = _selectedTimeRange.asStateFlow()
+
     private val _isFirstRun = MutableStateFlow(sourcePreferences?.isFirstRun() ?: false)
     val isFirstRun: StateFlow<Boolean> = _isFirstRun.asStateFlow()
 
@@ -61,9 +65,12 @@ class HealthDashboardViewModel(
         }
     }
 
+    private var loadJob: Job? = null
+
     @Suppress("UNUSED_PARAMETER")
     fun loadMetrics(forceRefresh: Boolean = false) {
-        viewModelScope.launch {
+        loadJob?.cancel()
+        loadJob = viewModelScope.launch {
             _uiState.value = _uiState.value.copy(isLoading = true)
             val date = _selectedDate.value
             val result = repository.getTodayDashboardState(sourceFilter = currentSource, targetDate = date)
@@ -103,6 +110,11 @@ class HealthDashboardViewModel(
 
     fun closeMetricDetail() {
         _activeMetricDetail.value = null
+    }
+
+    fun selectTimeRange(range: com.vayu.health.data.model.TimeRangeTab) {
+        _selectedTimeRange.value = range
+        _uiState.value = _uiState.value.copy(selectedTimeRange = range)
     }
 
     fun selectPreviousDay() {

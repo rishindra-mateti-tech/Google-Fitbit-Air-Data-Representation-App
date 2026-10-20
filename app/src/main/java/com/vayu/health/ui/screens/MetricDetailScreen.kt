@@ -1,5 +1,7 @@
 package com.vayu.health.ui.screens
 
+import androidx.compose.animation.*
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -13,9 +15,7 @@ import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.Text
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.collectAsState
-import androidx.compose.runtime.getValue
+import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -28,15 +28,16 @@ import com.vayu.health.data.model.HealthDashboardState
 import com.vayu.health.data.model.HealthDataCalculations
 import com.vayu.health.data.model.MetricDetailType
 import com.vayu.health.data.model.ProvenanceFormatter
+import com.vayu.health.data.model.TimeRangeTab
 import com.vayu.health.ui.components.*
 import com.vayu.health.ui.theme.*
 import com.vayu.health.ui.viewmodel.HealthDashboardViewModel
+import java.time.LocalDate
 
 /**
  * Dedicated detail screen for each individual clickable metric.
- * Addresses Issue 1 and Issue 5:
- * Each metric has its own distinct, beautifully formatted page with full context,
- * true Health Connect data and clearly labelled Vayu calculations where applicable.
+ * Provides authentic multi-range historical charting (Day, Week, Month, 3 Months, Year),
+ * touch scrubbing, typical baseline ribbons, and complete Google Health parity.
  */
 @Composable
 fun MetricDetailScreen(
@@ -48,9 +49,17 @@ fun MetricDetailScreen(
 ) {
     val scrollState = rememberScrollState()
     val selectedDate by viewModel.selectedDate.collectAsState()
-    val isToday = !selectedDate.isBefore(java.time.LocalDate.now())
+    val selectedRange by viewModel.selectedTimeRange.collectAsState()
+    val isToday = !selectedDate.isBefore(LocalDate.now())
 
     val provenanceSource = ProvenanceFormatter.formatCompact(state.selectedSource)
+    val accentColor = when (metricType) {
+        MetricDetailType.RESILIENCE -> Color(0xFF8A70D6)
+        MetricDetailType.HEART_RATE, MetricDetailType.RESTING_HR, MetricDetailType.SKIN_TEMP -> BaroHeartCoral
+        MetricDetailType.STEPS, MetricDetailType.ZONE_MINUTES -> BaroStrainBlue
+        MetricDetailType.CALORIES -> BaroZone3Orange
+        else -> BaroReadinessTeal
+    }
 
     Column(
         modifier = modifier
@@ -113,24 +122,43 @@ fun MetricDetailScreen(
                 }
             }
 
-            GlassPill(text = provenanceSource, dotColor = BaroReadinessTeal)
+            GlassPill(text = provenanceSource, dotColor = accentColor)
         }
 
-        Spacer(modifier = Modifier.height(20.dp))
+        Spacer(modifier = Modifier.height(14.dp))
 
-        when (metricType) {
-            MetricDetailType.READINESS -> ReadinessDetailContent(state)
-            MetricDetailType.HEART_RATE -> HeartRateDetailContent(state)
-            MetricDetailType.STEPS -> StepsDetailContent(state)
-            MetricDetailType.RESTING_HR -> RestingHrDetailContent(state)
-            MetricDetailType.HRV -> HrvDetailContent(state)
-            MetricDetailType.BREATHING_RATE -> BreathingRateDetailContent(state)
-            MetricDetailType.SPO2 -> Spo2DetailContent(state)
-            MetricDetailType.SKIN_TEMP -> SkinTempDetailContent(state)
-            MetricDetailType.ZONE_MINUTES -> ZoneMinutesDetailContent(state)
-            MetricDetailType.STRESS -> StressDetailContent(state)
-            MetricDetailType.RESILIENCE -> ResilienceDetailContent(state)
-            MetricDetailType.CALORIES -> CaloriesDetailContent(state)
+        // Time Range Tab Row [ D | W | M | 3M | Y ]
+        TimeRangeTabRow(
+            selectedTab = selectedRange,
+            onTabSelected = { viewModel.selectTimeRange(it) },
+            activeColor = accentColor,
+            modifier = Modifier.fillMaxWidth()
+        )
+
+        Spacer(modifier = Modifier.height(18.dp))
+
+        AnimatedContent(
+            targetState = selectedRange,
+            transitionSpec = {
+                (fadeIn(tween(180)) + scaleIn(initialScale = 0.99f, animationSpec = tween(180)))
+                    .togetherWith(fadeOut(tween(140)))
+            },
+            label = "RangeDetailTransition"
+        ) { range ->
+            when (metricType) {
+                MetricDetailType.READINESS -> ReadinessDetailContent(state)
+                MetricDetailType.HEART_RATE -> HeartRateDetailContent(state, range, selectedDate)
+                MetricDetailType.STEPS -> StepsDetailContent(state, range, selectedDate)
+                MetricDetailType.RESTING_HR -> RestingHrDetailContent(state, range, selectedDate)
+                MetricDetailType.HRV -> HrvDetailContent(state, range, selectedDate)
+                MetricDetailType.BREATHING_RATE -> BreathingRateDetailContent(state, range, selectedDate)
+                MetricDetailType.SPO2 -> Spo2DetailContent(state, range, selectedDate)
+                MetricDetailType.SKIN_TEMP -> SkinTempDetailContent(state, range, selectedDate)
+                MetricDetailType.ZONE_MINUTES -> ZoneMinutesDetailContent(state)
+                MetricDetailType.STRESS -> StressDetailContent(state)
+                MetricDetailType.RESILIENCE -> ResilienceDetailContent(state)
+                MetricDetailType.CALORIES -> CaloriesDetailContent(state, range, selectedDate)
+            }
         }
 
         Spacer(modifier = Modifier.height(96.dp))
@@ -138,7 +166,9 @@ fun MetricDetailScreen(
 }
 
 @Composable
-private fun ReadinessDetailContent(state: HealthDashboardState) {
+private fun ReadinessDetailContent(
+    state: HealthDashboardState
+) {
     val score = state.readinessScore
     val readinessLevel = state.readinessLevel
     val nightsRemaining = state.readinessNightsRemaining
@@ -290,7 +320,11 @@ private fun ReadinessDetailContent(state: HealthDashboardState) {
 }
 
 @Composable
-private fun HeartRateDetailContent(state: HealthDashboardState) {
+private fun HeartRateDetailContent(
+    state: HealthDashboardState,
+    selectedRange: TimeRangeTab,
+    selectedDate: LocalDate
+) {
     val hr = state.heartRate
     val rhr = state.restingHeartRate
     val minBpm = hr?.minBpm
@@ -317,28 +351,38 @@ private fun HeartRateDetailContent(state: HealthDashboardState) {
 
                 Spacer(modifier = Modifier.height(16.dp))
 
-                BaroSparklineWave(
-                    samples = samples,
-                    height = 96.dp,
-                    showLiveIndicator = true
-                )
+                if (selectedRange == TimeRangeTab.DAY) {
+                    BaroSparklineWave(
+                        samples = samples,
+                        height = 96.dp,
+                        showLiveIndicator = true
+                    )
 
-                Spacer(modifier = Modifier.height(10.dp))
+                    Spacer(modifier = Modifier.height(10.dp))
 
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween
-                ) {
-                    Text("12:00 AM", fontSize = 9.sp, color = BaroTextMuted)
-                    Text("6:00 AM", fontSize = 9.sp, color = BaroTextMuted)
-                    Text("12:00 PM", fontSize = 9.sp, color = BaroTextMuted)
-                    Text("6:00 PM", fontSize = 9.sp, color = BaroTextMuted)
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Text("12:00 AM", fontSize = 9.sp, color = BaroTextMuted)
+                        Text("6:00 AM", fontSize = 9.sp, color = BaroTextMuted)
+                        Text("12:00 PM", fontSize = 9.sp, color = BaroTextMuted)
+                        Text("6:00 PM", fontSize = 9.sp, color = BaroTextMuted)
+                    }
+                } else {
+                    val history = state.dailyRestingHrHistory.map { it.first to it.second.toDouble() }
+                    val series = HealthDataCalculations.buildHistoricalSeries(history, selectedDate, selectedRange, "bpm")
+                    BaroMultiRangeChart(
+                        series = series,
+                        accentColor = BaroHeartCoral,
+                        isBarChart = false
+                    )
                 }
             }
         }
 
         // Time in Zones
-        val zoneBreakdown = com.vayu.health.data.model.HealthDataCalculations.calculateHeartRateZones(
+        val zoneBreakdown = HealthDataCalculations.calculateHeartRateZones(
             samples = hr?.samples ?: emptyList(),
             restingHr = state.restingHeartRate?.beatsPerMinute?.toInt()
         )
@@ -366,11 +410,32 @@ private fun HeartRateDetailContent(state: HealthDashboardState) {
                 )
             }
         }
+
+        BaroCard(modifier = Modifier.fillMaxWidth()) {
+            Column {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Default.Info, contentDescription = null, tint = BaroHeartCoral, modifier = Modifier.size(14.dp))
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text("SYNC CADENCE", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = BaroTextSecondary, letterSpacing = 0.8.sp)
+                }
+                Spacer(modifier = Modifier.height(8.dp))
+                Text(
+                    text = "Vayu automatically checks for new pulse records every 15 seconds. Measurements display as fast as Fitbit syncs data into Health Connect.",
+                    fontSize = 11.5.sp,
+                    color = BaroTextMuted,
+                    lineHeight = 16.sp
+                )
+            }
+        }
     }
 }
 
 @Composable
-private fun StepsDetailContent(state: HealthDashboardState) {
+private fun StepsDetailContent(
+    state: HealthDashboardState,
+    selectedRange: TimeRangeTab,
+    selectedDate: LocalDate
+) {
     val act = state.activity
     val steps = act?.steps
     val stepsFormatted = steps?.let { "%,d".format(it) } ?: "—"
@@ -394,13 +459,35 @@ private fun StepsDetailContent(state: HealthDashboardState) {
                 }
             }
         }
+
+        if (selectedRange != TimeRangeTab.DAY) {
+            val history = state.dailyStepsHistory.map { it.first to it.second.toDouble() }
+            val series = HealthDataCalculations.buildHistoricalSeries(history, selectedDate, selectedRange, "steps")
+            BaroCard(modifier = Modifier.fillMaxWidth(), padding = 18.dp) {
+                Column {
+                    Text("STEPS HISTORY · ${selectedRange.label.uppercase()}", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = BaroTextSecondary, letterSpacing = 0.8.sp)
+                    Spacer(modifier = Modifier.height(14.dp))
+                    BaroMultiRangeChart(
+                        series = series,
+                        accentColor = BaroStrainBlue,
+                        isBarChart = true
+                    )
+                }
+            }
+        }
     }
 }
 
 @Composable
-private fun RestingHrDetailContent(state: HealthDashboardState) {
+private fun RestingHrDetailContent(
+    state: HealthDashboardState,
+    selectedRange: TimeRangeTab,
+    selectedDate: LocalDate
+) {
     val rhr = state.restingHeartRate?.beatsPerMinute
     val history = state.dailyRestingHrHistory.map { it.first to it.second.toDouble() }
+    val series = HealthDataCalculations.buildHistoricalSeries(history, selectedDate, selectedRange, "bpm")
+
     Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
         BaroCard(modifier = Modifier.fillMaxWidth(), padding = 18.dp) {
             Column {
@@ -413,20 +500,43 @@ private fun RestingHrDetailContent(state: HealthDashboardState) {
             }
         }
 
-        Vitals7DayBarCard(
-            title = "RESTING HEART RATE",
-            history = history,
-            unit = "bpm",
-            accentColor = BaroReadinessTeal,
-            formatValue = { "%.0f".format(it) }
-        )
+        BaroCard(modifier = Modifier.fillMaxWidth(), padding = 18.dp) {
+            Column {
+                Text("RESTING HEART RATE · ${selectedRange.label.uppercase()}", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = BaroTextSecondary, letterSpacing = 0.8.sp)
+                Spacer(modifier = Modifier.height(14.dp))
+                BaroMultiRangeChart(
+                    series = series,
+                    accentColor = BaroReadinessTeal,
+                    isBarChart = false
+                )
+            }
+        }
+
+        BaroCard(modifier = Modifier.fillMaxWidth()) {
+            Column {
+                Text("ABOUT RESTING HEART RATE", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = BaroTextSecondary, letterSpacing = 0.8.sp)
+                Spacer(modifier = Modifier.height(8.dp))
+                Text(
+                    "Resting heart rate measures the beats per minute when your body is completely at rest during sleep. A lower resting heart rate over time reflects cardiovascular fitness, recovery efficiency, and heart muscle strength.",
+                    fontSize = 11.5.sp,
+                    color = BaroTextMuted,
+                    lineHeight = 16.sp
+                )
+            }
+        }
     }
 }
 
 @Composable
-private fun HrvDetailContent(state: HealthDashboardState) {
+private fun HrvDetailContent(
+    state: HealthDashboardState,
+    selectedRange: TimeRangeTab,
+    selectedDate: LocalDate
+) {
     val hrv = state.hrv?.rmssdMillis
     val history = state.dailyHrvHistory
+    val series = HealthDataCalculations.buildHistoricalSeries(history, selectedDate, selectedRange, "ms")
+
     Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
         BaroCard(modifier = Modifier.fillMaxWidth(), padding = 18.dp) {
             Column {
@@ -439,23 +549,45 @@ private fun HrvDetailContent(state: HealthDashboardState) {
             }
         }
 
-        Vitals7DayBarCard(
-            title = "HRV (RMSSD)",
-            history = history,
-            unit = "ms",
-            accentColor = Color(0xFF8A70D6),
-            formatValue = { "%.0f".format(it) }
-        )
+        BaroCard(modifier = Modifier.fillMaxWidth(), padding = 18.dp) {
+            Column {
+                Text("HRV (RMSSD) · ${selectedRange.label.uppercase()}", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = BaroTextSecondary, letterSpacing = 0.8.sp)
+                Spacer(modifier = Modifier.height(14.dp))
+                BaroMultiRangeChart(
+                    series = series,
+                    accentColor = Color(0xFF8A70D6),
+                    isBarChart = false
+                )
+            }
+        }
+
+        BaroCard(modifier = Modifier.fillMaxWidth()) {
+            Column {
+                Text("ABOUT HRV (RMSSD)", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = BaroTextSecondary, letterSpacing = 0.8.sp)
+                Spacer(modifier = Modifier.height(8.dp))
+                Text(
+                    "Heart Rate Variability (HRV) measures the subtle time differences between heartbeats (RMSSD). Tracked nocturnally during deep sleep, a higher HRV typically indicates parasympathetic nervous system recovery, balanced stress adaptation, and readiness for exertion.",
+                    fontSize = 11.5.sp,
+                    color = BaroTextMuted,
+                    lineHeight = 16.sp
+                )
+            }
+        }
     }
 }
 
 @Composable
-private fun BreathingRateDetailContent(state: HealthDashboardState) {
+private fun BreathingRateDetailContent(
+    state: HealthDashboardState,
+    selectedRange: TimeRangeTab,
+    selectedDate: LocalDate
+) {
     val resp = state.respiratory?.breathsPerMinute
     val history = state.respiratory?.dailyBreathingRateHistory ?: emptyList()
     val isFallback = state.respiratory?.isBreathingRateHistoricalFallback == true
     val timestamp = state.respiratory?.respiratoryTimestamp
     val timeFormatted = formatDetailTimestamp(timestamp)
+    val series = HealthDataCalculations.buildHistoricalSeries(history, selectedDate, selectedRange, "brpm")
 
     Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
         BaroCard(modifier = Modifier.fillMaxWidth(), padding = 18.dp) {
@@ -477,24 +609,33 @@ private fun BreathingRateDetailContent(state: HealthDashboardState) {
             }
         }
 
-        Vitals7DayBarCard(
-            title = "BREATHING RATE",
-            history = history,
-            unit = "brpm",
-            accentColor = BaroStrainBlue,
-            formatValue = { "%.1f".format(it) }
-        )
+        BaroCard(modifier = Modifier.fillMaxWidth(), padding = 18.dp) {
+            Column {
+                Text("BREATHING RATE · ${selectedRange.label.uppercase()}", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = BaroTextSecondary, letterSpacing = 0.8.sp)
+                Spacer(modifier = Modifier.height(14.dp))
+                BaroMultiRangeChart(
+                    series = series,
+                    accentColor = BaroStrainBlue,
+                    isBarChart = false
+                )
+            }
+        }
     }
 }
 
 @Composable
-private fun Spo2DetailContent(state: HealthDashboardState) {
+private fun Spo2DetailContent(
+    state: HealthDashboardState,
+    selectedRange: TimeRangeTab,
+    selectedDate: LocalDate
+) {
     val rawSpo2 = state.respiratory?.spo2Percentage
     val spo2 = rawSpo2?.let { if (it <= 1.0) it * 100.0 else it }
     val history = state.respiratory?.dailySpo2History ?: emptyList()
     val isFallback = state.respiratory?.isSpo2HistoricalFallback == true
     val timestamp = state.respiratory?.spo2Timestamp
     val timeFormatted = formatDetailTimestamp(timestamp)
+    val series = HealthDataCalculations.buildHistoricalSeries(history, selectedDate, selectedRange, "%")
 
     Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
         BaroCard(modifier = Modifier.fillMaxWidth(), padding = 18.dp) {
@@ -516,22 +657,31 @@ private fun Spo2DetailContent(state: HealthDashboardState) {
             }
         }
 
-        Vitals7DayBarCard(
-            title = "SpO2",
-            history = history,
-            unit = "%",
-            accentColor = BaroReadinessTeal,
-            formatValue = { "%.0f".format(it) }
-        )
+        BaroCard(modifier = Modifier.fillMaxWidth(), padding = 18.dp) {
+            Column {
+                Text("SpO2 · ${selectedRange.label.uppercase()}", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = BaroTextSecondary, letterSpacing = 0.8.sp)
+                Spacer(modifier = Modifier.height(14.dp))
+                BaroMultiRangeChart(
+                    series = series,
+                    accentColor = BaroReadinessTeal,
+                    isBarChart = false
+                )
+            }
+        }
     }
 }
 
 @Composable
-private fun SkinTempDetailContent(state: HealthDashboardState) {
+private fun SkinTempDetailContent(
+    state: HealthDashboardState,
+    selectedRange: TimeRangeTab,
+    selectedDate: LocalDate
+) {
     val delta = state.respiratory?.skinTemperature?.averageDeltaCelsius
     val history = state.respiratory?.dailySkinTempHistory ?: emptyList()
     val timestamp = state.respiratory?.skinTemperature?.timestamp
     val timeFormatted = formatDetailTimestamp(timestamp)
+    val series = HealthDataCalculations.buildHistoricalSeries(history, selectedDate, selectedRange, "°C")
 
     Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
         BaroCard(modifier = Modifier.fillMaxWidth(), padding = 18.dp) {
@@ -547,87 +697,14 @@ private fun SkinTempDetailContent(state: HealthDashboardState) {
             }
         }
 
-        Vitals7DayBarCard(
-            title = "SKIN TEMP VARIATION",
-            history = history,
-            unit = "°C",
-            accentColor = BaroHeartCoral,
-            formatValue = { "%+.1f".format(it) }
-        )
-    }
-}
-
-@Composable
-private fun Vitals7DayBarCard(
-    title: String,
-    history: List<Pair<java.time.LocalDate, Double>>,
-    unit: String,
-    accentColor: Color = BaroReadinessTeal,
-    formatValue: (Double) -> String = { "%.1f".format(it) }
-) {
-    val today = java.time.LocalDate.now()
-    val last7Days = (6 downTo 0).map { today.minusDays(it.toLong()) }
-    val historyMap = history.toMap()
-    val values = last7Days.map { date -> historyMap[date] }
-    val validValues = values.filterNotNull()
-    val avg = if (validValues.isNotEmpty()) validValues.average() else null
-    val min = validValues.minOrNull()
-    val max = validValues.maxOrNull()
-
-    BaroCard(modifier = Modifier.fillMaxWidth(), padding = 18.dp) {
-        Column {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Text(
-                    text = "$title · PAST 7 DAYS",
-                    fontSize = 11.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = BaroTextSecondary,
-                    letterSpacing = 0.8.sp
-                )
-                if (avg != null) {
-                    Text(
-                        text = "AVG ${formatValue(avg)} $unit",
-                        fontSize = 11.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = accentColor
-                    )
-                }
-            }
-
-            Spacer(modifier = Modifier.height(14.dp))
-
-            val floatValues = values.map { it?.toFloat() }
-            val dayLabels = last7Days.map { it.dayOfWeek.name.take(1) }
-            BaroWeeklyBarChart(
-                dailyNullableValues = floatValues,
-                labels = dayLabels,
-                barColor = accentColor,
-                todayIndex = 6,
-                height = 54.dp
-            )
-
-            Spacer(modifier = Modifier.height(12.dp))
-
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween
-            ) {
-                val rangeStr = if (min != null && max != null) {
-                    "${formatValue(min)}–${formatValue(max)} $unit"
-                } else "Collecting history"
-                Text(
-                    text = "7-day range: $rangeStr",
-                    fontSize = 11.sp,
-                    color = BaroTextMuted
-                )
-                Text(
-                    text = "${validValues.size}/7 days recorded",
-                    fontSize = 11.sp,
-                    color = if (validValues.size >= 5) BaroReadinessTeal else BaroZone3Orange
+        BaroCard(modifier = Modifier.fillMaxWidth(), padding = 18.dp) {
+            Column {
+                Text("SKIN TEMP VARIATION · ${selectedRange.label.uppercase()}", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = BaroTextSecondary, letterSpacing = 0.8.sp)
+                Spacer(modifier = Modifier.height(14.dp))
+                BaroMultiRangeChart(
+                    series = series,
+                    accentColor = BaroHeartCoral,
+                    isBarChart = false
                 )
             }
         }
@@ -635,10 +712,12 @@ private fun Vitals7DayBarCard(
 }
 
 @Composable
-private fun ZoneMinutesDetailContent(state: HealthDashboardState) {
+private fun ZoneMinutesDetailContent(
+    state: HealthDashboardState
+) {
     val hr = state.heartRate
     val rhr = state.restingHeartRate
-    val zoneBreakdown = com.vayu.health.data.model.HealthDataCalculations.calculateHeartRateZones(
+    val zoneBreakdown = HealthDataCalculations.calculateHeartRateZones(
         samples = hr?.samples ?: emptyList(),
         restingHr = rhr?.beatsPerMinute?.toInt()
     )
@@ -789,7 +868,9 @@ private fun DetailStat(label: String, value: String) {
 }
 
 @Composable
-private fun ResilienceDetailContent(state: HealthDashboardState) {
+private fun ResilienceDetailContent(
+    state: HealthDashboardState
+) {
     val resilience = state.resilience ?: HealthDataCalculations.calculateResilience(
         state.sleep,
         state.activity,
@@ -829,13 +910,49 @@ private fun ResilienceDetailContent(state: HealthDashboardState) {
             }
         }
 
+        // Section Title: 3 Accordion Pillars matching Google Health layout
+        Text(
+            text = "PILLARS OF RESILIENCE",
+            fontSize = 11.sp,
+            fontWeight = FontWeight.Bold,
+            color = BaroTextSecondary,
+            letterSpacing = 0.8.sp
+        )
+
+        // Pillar 1: Sleep patterns
+        ResilienceAccordionPillar(
+            title = "Sleep patterns",
+            status = resilience.sleepPatternsStatus,
+            description = resilience.sleepPatternsText,
+            extendedExplanation = "Sleep is your body's primary time for physical tissue repair, cellular restoration, and cognitive memory consolidation. Consistent sleep duration aligned with your circadian rhythm supports physical resilience.",
+            accentColor = BaroSleepBlue
+        )
+
+        // Pillar 2: Activity balance
+        ResilienceAccordionPillar(
+            title = "Activity balance",
+            status = resilience.activityBalanceStatus,
+            description = resilience.activityBalanceText,
+            extendedExplanation = "Balancing active exertion with sufficient rest periods ensures your cardiovascular and musculoskeletal systems adapt and grow stronger rather than succumbing to cumulative physical strain.",
+            accentColor = BaroStrainBlue
+        )
+
+        // Pillar 3: Physical calmness
+        ResilienceAccordionPillar(
+            title = "Physical calmness",
+            status = resilience.physicalCalmnessStatus,
+            description = resilience.physicalCalmnessText,
+            extendedExplanation = "Physical calmness evaluates parasympathetic nervous system activity through nocturnal resting pulse dip and HRV elevation. Deep resting states allow your body to rebuild resilience.",
+            accentColor = resiliencePurple
+        )
+
         // Vayu Model Transparency Card
         BaroCard(modifier = Modifier.fillMaxWidth()) {
             Column {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Icon(Icons.Default.Info, null, tint = resiliencePurple, modifier = Modifier.size(15.dp))
                     Spacer(modifier = Modifier.width(6.dp))
-                    Text("VAYU RESILIENCE MODEL*", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = BaroTextSecondary, letterSpacing = 0.8.sp)
+                    Text("ABOUT RESILIENCE*", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = BaroTextSecondary, letterSpacing = 0.8.sp)
                 }
                 Spacer(modifier = Modifier.height(8.dp))
                 Text(
@@ -846,76 +963,70 @@ private fun ResilienceDetailContent(state: HealthDashboardState) {
                 )
             }
         }
-
-        // Section Title
-        Text(
-            text = "PILLARS OF RESILIENCE",
-            fontSize = 11.sp,
-            fontWeight = FontWeight.Bold,
-            color = BaroTextSecondary,
-            letterSpacing = 0.8.sp
-        )
-
-        // Pillar 1: Sleep patterns
-        ResiliencePillarCard(
-            title = "Sleep patterns",
-            status = resilience.sleepPatternsStatus,
-            description = resilience.sleepPatternsText,
-            accentColor = BaroSleepBlue
-        )
-
-        // Pillar 2: Activity balance
-        ResiliencePillarCard(
-            title = "Activity balance",
-            status = resilience.activityBalanceStatus,
-            description = resilience.activityBalanceText,
-            accentColor = BaroStrainBlue
-        )
-
-        // Pillar 3: Physical calmness
-        ResiliencePillarCard(
-            title = "Physical calmness",
-            status = resilience.physicalCalmnessStatus,
-            description = resilience.physicalCalmnessText,
-            accentColor = resiliencePurple
-        )
     }
 }
 
 @Composable
-private fun ResiliencePillarCard(
+private fun ResilienceAccordionPillar(
     title: String,
     status: String,
     description: String,
+    extendedExplanation: String,
     accentColor: Color
 ) {
-    BaroCard(modifier = Modifier.fillMaxWidth(), padding = 16.dp) {
+    var isExpanded by remember { mutableStateOf(false) }
+
+    BaroCard(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable { isExpanded = !isExpanded },
+        padding = 16.dp
+    ) {
         Column {
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Text(
-                    text = title,
-                    fontSize = 14.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = BaroTextWhite
-                )
-                Box(
-                    modifier = Modifier
-                        .clip(RoundedCornerShape(6.dp))
-                        .background(accentColor.copy(alpha = 0.15f))
-                        .padding(horizontal = 8.dp, vertical = 3.dp)
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
                     Text(
-                        text = status,
-                        fontSize = 11.sp,
+                        text = title,
+                        fontSize = 14.sp,
                         fontWeight = FontWeight.Bold,
-                        color = accentColor
+                        color = BaroTextWhite
+                    )
+                }
+
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(6.dp))
+                            .background(accentColor.copy(alpha = 0.15f))
+                            .padding(horizontal = 8.dp, vertical = 3.dp)
+                    ) {
+                        Text(
+                            text = status,
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = accentColor
+                        )
+                    }
+
+                    Icon(
+                        imageVector = if (isExpanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
+                        contentDescription = if (isExpanded) "Collapse" else "Expand",
+                        tint = BaroTextMuted,
+                        modifier = Modifier.size(20.dp)
                     )
                 }
             }
+
             Spacer(modifier = Modifier.height(8.dp))
             Text(
                 text = description,
@@ -923,12 +1034,40 @@ private fun ResiliencePillarCard(
                 color = BaroTextMuted,
                 lineHeight = 18.sp
             )
+
+            AnimatedVisibility(
+                visible = isExpanded,
+                enter = fadeIn(),
+                exit = fadeOut()
+            ) {
+                Column {
+                    Spacer(modifier = Modifier.height(10.dp))
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(Color(0xFF1B1B20))
+                            .padding(12.dp)
+                    ) {
+                        Text(
+                            text = extendedExplanation,
+                            fontSize = 12.sp,
+                            color = BaroTextWhite.copy(alpha = 0.85f),
+                            lineHeight = 17.sp
+                        )
+                    }
+                }
+            }
         }
     }
 }
 
 @Composable
-private fun CaloriesDetailContent(state: HealthDashboardState) {
+private fun CaloriesDetailContent(
+    state: HealthDashboardState,
+    selectedRange: TimeRangeTab,
+    selectedDate: LocalDate
+) {
     val totalCal = state.activity?.totalCaloriesKcal?.toInt()
         ?: state.activity?.activeCaloriesKcal?.toInt()
     val activeCal = state.activity?.activeCaloriesKcal?.toInt()
@@ -981,6 +1120,22 @@ private fun CaloriesDetailContent(state: HealthDashboardState) {
                     textAlign = TextAlign.Center,
                     lineHeight = 16.sp
                 )
+            }
+        }
+
+        if (selectedRange != TimeRangeTab.DAY) {
+            val history = state.dailyCaloriesHistory
+            val series = HealthDataCalculations.buildHistoricalSeries(history, selectedDate, selectedRange, "kcal")
+            BaroCard(modifier = Modifier.fillMaxWidth(), padding = 18.dp) {
+                Column {
+                    Text("CALORIES BURNED · ${selectedRange.label.uppercase()}", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = BaroTextSecondary, letterSpacing = 0.8.sp)
+                    Spacer(modifier = Modifier.height(14.dp))
+                    BaroMultiRangeChart(
+                        series = series,
+                        accentColor = BaroZone3Orange,
+                        isBarChart = true
+                    )
+                }
             }
         }
 

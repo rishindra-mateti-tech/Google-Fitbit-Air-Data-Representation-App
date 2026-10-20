@@ -1012,4 +1012,222 @@ class HealthDataMappingTest {
         assertEquals(3, nonNullEntries.size)
         assertEquals(listOf(99.0, 97.0, 98.0), nonNullEntries)
     }
+
+    @Test
+    fun testBuildHistoricalSeries_weekAndMonth_preservesNullsAndComputesBaseline() {
+        val today = LocalDate.now()
+        val history = listOf(
+            today to 72.0,
+            today.minusDays(1) to 70.0,
+            today.minusDays(3) to 68.0,
+            today.minusDays(5) to 75.0
+        )
+
+        val weekSeries = HealthDataCalculations.buildHistoricalSeries(
+            history = history,
+            targetDate = today,
+            rangeTab = TimeRangeTab.WEEK,
+            unit = "bpm"
+        )
+
+        assertEquals(7, weekSeries.points.size)
+        assertEquals(72.0, weekSeries.points.last().value)
+        assertNull(weekSeries.points[weekSeries.points.size - 3].value) // 2 days ago missing
+        assertEquals(4, weekSeries.points.mapNotNull { it.value }.size)
+        assertNotNull(weekSeries.baselineMin)
+        assertNotNull(weekSeries.baselineMax)
+        assertTrue(weekSeries.baselineMin!! <= weekSeries.baselineMax!!)
+        assertEquals(71.25, weekSeries.average!!, 0.01)
+
+        val monthSeries = HealthDataCalculations.buildHistoricalSeries(
+            history = history,
+            targetDate = today,
+            rangeTab = TimeRangeTab.MONTH,
+            unit = "bpm"
+        )
+        assertEquals(30, monthSeries.points.size)
+    }
+
+    @Test
+    fun testSleepEfficiencyAndQuality_outOfRangeCalculation() {
+        val start = Instant.parse("2026-10-19T02:44:00Z")
+        val end = Instant.parse("2026-10-19T09:00:00Z") // 376 minutes in bed
+        val segments = listOf(
+            SleepStageSegment(SleepStageType.AWAKE, start, start.plusSeconds(780), 13), // 13 min
+            SleepStageSegment(SleepStageType.LIGHT, start.plusSeconds(780), start.plusSeconds(10980), 170), // 170 min
+            SleepStageSegment(SleepStageType.DEEP, start.plusSeconds(10980), start.plusSeconds(16440), 91), // 91 min
+            SleepStageSegment(SleepStageType.REM, start.plusSeconds(16440), end, 102) // 102 min
+        ) // Actual sleep = 363 min (6h 3m)
+
+        val sleep = SleepMetric(
+            sessionElapsedMinutes = 376L,
+            actualSleepDurationMinutes = 363L,
+            deepMinutes = 91L,
+            remMinutes = 102L,
+            lightMinutes = 170L,
+            sleepingMinutes = 0L,
+            awakeMinutes = 13L,
+            outOfBedMinutes = 0L,
+            startTime = start,
+            endTime = end,
+            stages = segments,
+            sourcePackage = "com.fitbit.FitbitMobile"
+        )
+
+        val hrSamples = listOf(
+            HeartRateSamplePoint(start.plusSeconds(1000), 64),
+            HeartRateSamplePoint(start.plusSeconds(3000), 62),
+            HeartRateSamplePoint(start.plusSeconds(5000), 66)
+        )
+
+        val quality = HealthDataCalculations.calculateSleepQuality(sleep, hrSamples)
+        assertNotNull(quality)
+        assertEquals(64L, quality!!.sleepingHeartRateAvg)
+        assertEquals("In range", quality.soundSleepStatus)
+        assertEquals("In range", quality.restlessnessStatus)
+        assertEquals("In range", quality.interruptionsStatus)
+        assertTrue(quality.outOfRangeCount in 0..4)
+    }
+
+    @Test
+    fun testSleepingHeartRateAvg_nullWhenNoNocturnalPulseSamples() {
+        val start = Instant.parse("2026-10-19T02:00:00Z")
+        val end = Instant.parse("2026-10-19T08:00:00Z")
+        val sleep = SleepMetric(
+            sessionElapsedMinutes = 360L,
+            actualSleepDurationMinutes = 340L,
+            deepMinutes = 60L,
+            remMinutes = 80L,
+            lightMinutes = 200L,
+            sleepingMinutes = 0L,
+            awakeMinutes = 20L,
+            outOfBedMinutes = 0L,
+            startTime = start,
+            endTime = end,
+            stages = emptyList(),
+            sourcePackage = "com.fitbit.FitbitMobile"
+        )
+
+        // When nocturnal pulse samples are empty, sleeping HR avg must be strictly null (zero synthetic defaults)
+        val quality = HealthDataCalculations.calculateSleepQuality(sleep, emptyList())
+        assertNotNull(quality)
+        assertNull(quality!!.sleepingHeartRateAvg)
+    }
+
+    @Test
+    fun testReadiness_personalBaselineEvaluatedAccuratelyWhenHistoryAvailable() {
+        val today = LocalDate.of(2026, 10, 19)
+        val history7 = (1..7).map { i ->
+            DailySleepSummary(
+                date = today.minusDays(i.toLong()),
+                actualSleepMinutes = 450L,
+                sessionElapsedMinutes = 480L,
+                sourcePackage = "com.fitbit.FitbitMobile"
+            )
+        }
+        val hrvHistory = (1..7).map { i -> today.minusDays(i.toLong()) to 55.0 }
+        val rhrHistory = (1..7).map { i -> today.minusDays(i.toLong()) to 58L }
+
+        val todaySleep = SleepMetric(
+            sessionElapsedMinutes = 480L,
+            actualSleepDurationMinutes = 450L,
+            deepMinutes = 90L,
+            remMinutes = 90L,
+            lightMinutes = 270L,
+            sleepingMinutes = 0L,
+            awakeMinutes = 30L,
+            outOfBedMinutes = 0L,
+            startTime = Instant.now().minusSeconds(28800),
+            endTime = Instant.now(),
+            stages = emptyList(),
+            sourcePackage = "com.fitbit.FitbitMobile"
+        )
+        val todayHrv = HrvMetric(rmssdMillis = 55.0, timestamp = Instant.now(), sourcePackage = "com.fitbit.FitbitMobile")
+        val todayRhr = RestingHeartRateMetric(beatsPerMinute = 58L, timestamp = Instant.now(), sourcePackage = "com.fitbit.FitbitMobile")
+
+        val result = HealthDataCalculations.calculateReadiness(
+            sleepHistory = history7,
+            todaySleep = todaySleep,
+            todayHrv = todayHrv,
+            todayRhr = todayRhr,
+            historicalHrv = hrvHistory,
+            historicalRhr = rhrHistory
+        )
+
+        assertNotNull(result.score)
+        assertTrue(result.isPersonalBaselineUsed)
+        assertEquals("v1.2 (on-device)", result.formulaVersion)
+        assertTrue(result.score!! in 1..100)
+    }
+
+    @Test
+    fun testReadiness_fixedReferenceUsedWhenHistoryInsufficient() {
+        val today = LocalDate.of(2026, 10, 19)
+        // 7 distinct sleep dates, but only 2 nights of HRV / RHR
+        val history7 = (1..7).map { i ->
+            DailySleepSummary(
+                date = today.minusDays(i.toLong()),
+                actualSleepMinutes = 420L,
+                sessionElapsedMinutes = 460L,
+                sourcePackage = "com.fitbit.FitbitMobile"
+            )
+        }
+        val sparseHrv = (1..2).map { i -> today.minusDays(i.toLong()) to 48.0 }
+        val sparseRhr = (1..2).map { i -> today.minusDays(i.toLong()) to 60L }
+
+        val todaySleep = SleepMetric(
+            sessionElapsedMinutes = 480L,
+            actualSleepDurationMinutes = 420L,
+            deepMinutes = 80L,
+            remMinutes = 80L,
+            lightMinutes = 260L,
+            sleepingMinutes = 0L,
+            awakeMinutes = 60L,
+            outOfBedMinutes = 0L,
+            startTime = Instant.now().minusSeconds(28800),
+            endTime = Instant.now(),
+            stages = emptyList(),
+            sourcePackage = "com.fitbit.FitbitMobile"
+        )
+        val todayHrv = HrvMetric(rmssdMillis = 48.0, timestamp = Instant.now(), sourcePackage = "com.fitbit.FitbitMobile")
+        val todayRhr = RestingHeartRateMetric(beatsPerMinute = 60L, timestamp = Instant.now(), sourcePackage = "com.fitbit.FitbitMobile")
+
+        val result = HealthDataCalculations.calculateReadiness(
+            sleepHistory = history7,
+            todaySleep = todaySleep,
+            todayHrv = todayHrv,
+            todayRhr = todayRhr,
+            historicalHrv = sparseHrv,
+            historicalRhr = sparseRhr
+        )
+
+        assertNotNull(result.score)
+        assertFalse("Must use fixed reference when history < 7 nights across all vitals", result.isPersonalBaselineUsed)
+        assertEquals("v1.2 (on-device)", result.formulaVersion)
+    }
+
+    @Test
+    fun testHealthConnectManager_matchesSourceFilter() {
+        val fitbit = "com.fitbit.FitbitMobile"
+        val samsung = "com.sec.android.app.shealth"
+        val googleFit = "com.google.android.apps.fitness"
+
+        // When sourceFilter is null, all packages match
+        assertTrue(HealthConnectManager.matchesSource(fitbit, null))
+        assertTrue(HealthConnectManager.matchesSource(samsung, null))
+
+        // When sourceFilter is Fitbit, match Fitbit and reject all foreign providers
+        assertTrue(HealthConnectManager.matchesSource(fitbit, fitbit))
+        assertTrue(HealthConnectManager.matchesSource("com.fitbit.something", fitbit))
+        assertFalse(HealthConnectManager.matchesSource(samsung, fitbit))
+        assertFalse(HealthConnectManager.matchesSource(googleFit, fitbit))
+    }
+
+    @Test
+    fun testGoogleHealthPreferences_disabledByDefault() {
+        val prefs = HealthSourcePreferences(null)
+        assertFalse("Direct cloud sync must be disabled by default per security rules", prefs.isGoogleHealthEnabled())
+        prefs.disconnectGoogleHealth()
+        assertFalse(prefs.isGoogleHealthEnabled())
+    }
 }

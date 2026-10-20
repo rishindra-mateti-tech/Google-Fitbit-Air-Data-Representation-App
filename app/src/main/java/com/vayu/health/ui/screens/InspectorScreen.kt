@@ -82,6 +82,39 @@ fun InspectorScreen(
             }
         }
 
+        // Privacy & Architecture Card
+        item {
+            Text(
+                text = "PRIVACY & LOCAL ARCHITECTURE",
+                fontSize = 11.sp,
+                fontWeight = FontWeight.Bold,
+                color = VayuCyan,
+                letterSpacing = 0.5.sp
+            )
+        }
+
+        item {
+            GlassCard(modifier = Modifier.fillMaxWidth()) {
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(Icons.Default.CheckCircle, contentDescription = null, tint = StatusVerified, modifier = Modifier.size(16.dp))
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text("100% On-Device Single Source of Truth", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = TextPrimary)
+                    }
+                    Text(
+                        text = "• What is read: Wearable biometrics directly from Android Health Connect (Heart Rate, Steps, Sleep, HRV, Resting HR, Breathing Rate, SpO2, Skin Temp).\n" +
+                               "• What is stored: Local app preferences on this device only (selected source filter, sleep target).\n" +
+                               "• What is transmitted: Nothing. Zero telemetry, zero analytics, zero external servers.\n" +
+                               "• Direct Cloud Sync: Disabled. Vayu operates as a private local mirror of Health Connect.\n" +
+                               "• Derived Metrics: Readiness*, Resilience*, and Sleep score* are calculated 100% locally on-device.",
+                        fontSize = 11.5.sp,
+                        color = TextSecondary,
+                        lineHeight = 17.sp
+                    )
+                }
+            }
+        }
+
         // 2. Section: Today's Health Connect Aggregates Used by Vayu
         item {
             Text(

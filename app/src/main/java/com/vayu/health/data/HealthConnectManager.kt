@@ -18,7 +18,24 @@ import java.time.ZoneId
 
 open class HealthConnectManager(private val context: Context? = null) {
 
-    private val tag = "HealthConnectManager"
+    companion object {
+        private const val TAG = "HealthConnectManager"
+
+        /**
+         * Strictly matches Health Connect record origin against selected source.
+         * Prevents silently mixing records from other providers when Fitbit is selected.
+         */
+        fun matchesSource(originPackage: String, sourceFilter: String?): Boolean {
+            if (sourceFilter == null) return true
+            if (originPackage.equals(sourceFilter, ignoreCase = true)) return true
+            if (sourceFilter.equals("com.fitbit.FitbitMobile", ignoreCase = true) || sourceFilter.equals("fitbit", ignoreCase = true)) {
+                return originPackage.startsWith("com.fitbit", ignoreCase = true)
+            }
+            return originPackage.equals(sourceFilter, ignoreCase = true)
+        }
+    }
+
+    private val tag = TAG
 
     val healthConnectClient: HealthConnectClient? by lazy {
         val ctx = context ?: return@lazy null
@@ -104,14 +121,19 @@ open class HealthConnectManager(private val context: Context? = null) {
             val perm = HealthPermission.getReadPermission(recordClass)
             if (perm in granted) {
                 try {
-                    val res = client.readRecords(
-                        ReadRecordsRequest(
-                            recordType = recordClass,
-                            timeRangeFilter = TimeRangeFilter.between(start, end),
-                            pageSize = 100
+                    var pageToken: String? = null
+                    do {
+                        val res = client.readRecords(
+                            ReadRecordsRequest(
+                                recordType = recordClass,
+                                timeRangeFilter = TimeRangeFilter.between(start, end),
+                                pageToken = pageToken,
+                                pageSize = 1000
+                            )
                         )
-                    )
-                    res.records.forEach { origins.add(it.metadata.dataOrigin.packageName) }
+                        res.records.forEach { origins.add(it.metadata.dataOrigin.packageName) }
+                        pageToken = res.pageToken
+                    } while (pageToken != null)
                 } catch (e: Exception) {
                     Log.w(tag, "Error querying origins for ${recordClass.simpleName}", e)
                 }
@@ -172,7 +194,7 @@ open class HealthConnectManager(private val context: Context? = null) {
                 dataOriginFilter = dataOriginFilter
             )
             val filteredRecords = allRecords.filter {
-                sourceFilter == null || it.metadata.dataOrigin.packageName == sourceFilter
+                matchesSource(it.metadata.dataOrigin.packageName, sourceFilter)
             }
             if (filteredRecords.isEmpty()) return null
 
@@ -308,7 +330,7 @@ open class HealthConnectManager(private val context: Context? = null) {
                 dataOriginFilter = dataOriginFilter
             )
             val filteredRecords = allRecords.filter {
-                sourceFilter == null || it.metadata.dataOrigin.packageName == sourceFilter
+                matchesSource(it.metadata.dataOrigin.packageName, sourceFilter)
             }
             val zone = ZoneId.systemDefault()
             filteredRecords
@@ -381,9 +403,7 @@ open class HealthConnectManager(private val context: Context? = null) {
             val zone = ZoneId.systemDefault()
             val dateToMatch = targetDate ?: LocalDate.now()
             val sourceRecords = allRecords.filter { record ->
-                sourceFilter == null ||
-                        record.metadata.dataOrigin.packageName.contains(sourceFilter, ignoreCase = true) ||
-                        sourceFilter.contains(record.metadata.dataOrigin.packageName, ignoreCase = true)
+                matchesSource(record.metadata.dataOrigin.packageName, sourceFilter)
             }
             val filtered = sourceRecords.filter { record ->
                 val recordTime = record.time.atZone(zone)
@@ -427,9 +447,7 @@ open class HealthConnectManager(private val context: Context? = null) {
             val zone = ZoneId.systemDefault()
             allRecords
                 .filter { record ->
-                    sourceFilter == null ||
-                            record.metadata.dataOrigin.packageName.contains(sourceFilter, ignoreCase = true) ||
-                            sourceFilter.contains(record.metadata.dataOrigin.packageName, ignoreCase = true)
+                    matchesSource(record.metadata.dataOrigin.packageName, sourceFilter)
                 }
                 .groupBy { it.time.atZone(zone).toLocalDate() }
                 .mapValues { (_, records) -> (records.map { it.beatsPerMinute }.average()).toLong() }
@@ -460,9 +478,7 @@ open class HealthConnectManager(private val context: Context? = null) {
             val zone = ZoneId.systemDefault()
             val dateToMatch = targetDate ?: LocalDate.now()
             val sourceRecords = allRecords.filter { record ->
-                sourceFilter == null ||
-                        record.metadata.dataOrigin.packageName.contains(sourceFilter, ignoreCase = true) ||
-                        sourceFilter.contains(record.metadata.dataOrigin.packageName, ignoreCase = true)
+                matchesSource(record.metadata.dataOrigin.packageName, sourceFilter)
             }
             val filtered = sourceRecords.filter { record ->
                 val recordTime = record.time.atZone(zone)
@@ -513,9 +529,7 @@ open class HealthConnectManager(private val context: Context? = null) {
             val zone = ZoneId.systemDefault()
             allRecords
                 .filter { record ->
-                    sourceFilter == null ||
-                            record.metadata.dataOrigin.packageName.contains(sourceFilter, ignoreCase = true) ||
-                            sourceFilter.contains(record.metadata.dataOrigin.packageName, ignoreCase = true)
+                    matchesSource(record.metadata.dataOrigin.packageName, sourceFilter)
                 }
                 .groupBy { it.time.atZone(zone).toLocalDate() }
                 .mapValues { (_, records) -> records.map { it.heartRateVariabilityMillis }.average() }
@@ -558,7 +572,7 @@ open class HealthConnectManager(private val context: Context? = null) {
             } while (pageToken != null)
 
             val filteredRecords = allRecords.filter {
-                sourceFilter == null || it.metadata.dataOrigin.packageName == sourceFilter
+                matchesSource(it.metadata.dataOrigin.packageName, sourceFilter)
             }
 
             val allSamples = filteredRecords.flatMap { record ->
@@ -685,6 +699,70 @@ open class HealthConnectManager(private val context: Context? = null) {
     }
 
     /**
+     * Reads daily step history over the requested time window using paginated reads.
+     */
+    open suspend fun readStepsHistory(
+        start: Instant,
+        end: Instant,
+        sourceFilter: String? = null
+    ): List<Pair<LocalDate, Long>> {
+        if (healthConnectClient == null) return emptyList()
+        if (!hasPermission(HealthPermission.getReadPermission(StepsRecord::class))) {
+            return emptyList()
+        }
+
+        return try {
+            val records = readAllRecordsPaginated<StepsRecord>(
+                timeRangeFilter = TimeRangeFilter.between(start, end)
+            )
+            val zone = ZoneId.systemDefault()
+            records
+                .filter { record ->
+                    matchesSource(record.metadata.dataOrigin.packageName, sourceFilter)
+                }
+                .groupBy { it.startTime.atZone(zone).toLocalDate() }
+                .mapValues { (_, recs) -> recs.sumOf { it.count } }
+                .toList()
+                .sortedBy { it.first }
+        } catch (e: Exception) {
+            Log.e(tag, "Error reading steps history", e)
+            emptyList()
+        }
+    }
+
+    /**
+     * Reads daily total calories burned history over the requested time window using paginated reads.
+     */
+    open suspend fun readCaloriesHistory(
+        start: Instant,
+        end: Instant,
+        sourceFilter: String? = null
+    ): List<Pair<LocalDate, Double>> {
+        if (healthConnectClient == null) return emptyList()
+        if (!hasPermission(HealthPermission.getReadPermission(TotalCaloriesBurnedRecord::class))) {
+            return emptyList()
+        }
+
+        return try {
+            val records = readAllRecordsPaginated<TotalCaloriesBurnedRecord>(
+                timeRangeFilter = TimeRangeFilter.between(start, end)
+            )
+            val zone = ZoneId.systemDefault()
+            records
+                .filter { record ->
+                    matchesSource(record.metadata.dataOrigin.packageName, sourceFilter)
+                }
+                .groupBy { it.startTime.atZone(zone).toLocalDate() }
+                .mapValues { (_, recs) -> recs.sumOf { it.energy.inKilocalories } }
+                .toList()
+                .sortedBy { it.first }
+        } catch (e: Exception) {
+            Log.e(tag, "Error reading calories history", e)
+            emptyList()
+        }
+    }
+
+    /**
      * Reads respiratory rate, oxygen saturation, and skin temperature using paginated queries.
      * When sourceFilter is specified, filters records by that DataOrigin.
      */
@@ -710,9 +788,7 @@ open class HealthConnectManager(private val context: Context? = null) {
                     timeRangeFilter = TimeRangeFilter.between(start, end)
                 )
                 val sourceRecords = records.filter { record ->
-                    sourceFilter == null ||
-                            record.metadata.dataOrigin.packageName.contains(sourceFilter, ignoreCase = true) ||
-                            sourceFilter.contains(record.metadata.dataOrigin.packageName, ignoreCase = true)
+                    matchesSource(record.metadata.dataOrigin.packageName, sourceFilter)
                 }
                 dailyBreathingRateHistory = sourceRecords
                     .groupBy { it.time.atZone(zone).toLocalDate() }
@@ -751,9 +827,7 @@ open class HealthConnectManager(private val context: Context? = null) {
                     timeRangeFilter = TimeRangeFilter.between(start, end)
                 )
                 val sourceRecords = records.filter { record ->
-                    sourceFilter == null ||
-                            record.metadata.dataOrigin.packageName.contains(sourceFilter, ignoreCase = true) ||
-                            sourceFilter.contains(record.metadata.dataOrigin.packageName, ignoreCase = true)
+                    matchesSource(record.metadata.dataOrigin.packageName, sourceFilter)
                 }
                 dailySpo2History = sourceRecords
                     .groupBy { it.time.atZone(zone).toLocalDate() }
@@ -794,9 +868,7 @@ open class HealthConnectManager(private val context: Context? = null) {
                     timeRangeFilter = TimeRangeFilter.between(start, end)
                 )
                 val sourceRecords = records.filter { record ->
-                    sourceFilter == null ||
-                            record.metadata.dataOrigin.packageName.contains(sourceFilter, ignoreCase = true) ||
-                            sourceFilter.contains(record.metadata.dataOrigin.packageName, ignoreCase = true)
+                    matchesSource(record.metadata.dataOrigin.packageName, sourceFilter)
                 }
                 dailySkinTempHistory = sourceRecords
                     .groupBy { it.startTime.atZone(zone).toLocalDate() }
@@ -879,7 +951,7 @@ open class HealthConnectManager(private val context: Context? = null) {
                     TimeRangeFilter.between(start, end),
                     dataOriginFilter = dataOriginFilter
                 )
-                sleep.filter { sourceFilter == null || it.metadata.dataOrigin.packageName == sourceFilter }.forEach {
+                sleep.filter { matchesSource(it.metadata.dataOrigin.packageName, sourceFilter) }.forEach {
                     val dur = Duration.between(it.startTime, it.endTime).toMinutes()
                     list.add(
                         RawHealthRecord(
@@ -899,7 +971,7 @@ open class HealthConnectManager(private val context: Context? = null) {
                     TimeRangeFilter.between(start, end),
                     dataOriginFilter = dataOriginFilter
                 )
-                hrv.filter { sourceFilter == null || it.metadata.dataOrigin.packageName == sourceFilter }.forEach {
+                hrv.filter { matchesSource(it.metadata.dataOrigin.packageName, sourceFilter) }.forEach {
                     list.add(
                         RawHealthRecord(
                             recordType = "HeartRateVariabilityRmssdRecord",
@@ -918,7 +990,7 @@ open class HealthConnectManager(private val context: Context? = null) {
                     TimeRangeFilter.between(start, end),
                     dataOriginFilter = dataOriginFilter
                 )
-                rhr.filter { sourceFilter == null || it.metadata.dataOrigin.packageName == sourceFilter }.forEach {
+                rhr.filter { matchesSource(it.metadata.dataOrigin.packageName, sourceFilter) }.forEach {
                     list.add(
                         RawHealthRecord(
                             recordType = "RestingHeartRateRecord",
@@ -937,7 +1009,7 @@ open class HealthConnectManager(private val context: Context? = null) {
                     TimeRangeFilter.between(start, end),
                     dataOriginFilter = dataOriginFilter
                 )
-                hr.filter { sourceFilter == null || it.metadata.dataOrigin.packageName == sourceFilter }.forEach {
+                hr.filter { matchesSource(it.metadata.dataOrigin.packageName, sourceFilter) }.forEach {
                     list.add(
                         RawHealthRecord(
                             recordType = "HeartRateRecord",
@@ -956,7 +1028,7 @@ open class HealthConnectManager(private val context: Context? = null) {
                     TimeRangeFilter.between(start, end),
                     dataOriginFilter = dataOriginFilter
                 )
-                steps.filter { sourceFilter == null || it.metadata.dataOrigin.packageName == sourceFilter }.forEach {
+                steps.filter { matchesSource(it.metadata.dataOrigin.packageName, sourceFilter) }.forEach {
                     list.add(
                         RawHealthRecord(
                             recordType = "StepsRecord",
@@ -975,7 +1047,7 @@ open class HealthConnectManager(private val context: Context? = null) {
                     TimeRangeFilter.between(start, end),
                     dataOriginFilter = dataOriginFilter
                 )
-                distance.filter { sourceFilter == null || it.metadata.dataOrigin.packageName == sourceFilter }.forEach {
+                distance.filter { matchesSource(it.metadata.dataOrigin.packageName, sourceFilter) }.forEach {
                     list.add(
                         RawHealthRecord(
                             recordType = "DistanceRecord",
@@ -994,7 +1066,7 @@ open class HealthConnectManager(private val context: Context? = null) {
                     TimeRangeFilter.between(start, end),
                     dataOriginFilter = dataOriginFilter
                 )
-                cal.filter { sourceFilter == null || it.metadata.dataOrigin.packageName == sourceFilter }.forEach {
+                cal.filter { matchesSource(it.metadata.dataOrigin.packageName, sourceFilter) }.forEach {
                     list.add(
                         RawHealthRecord(
                             recordType = "ActiveCaloriesBurnedRecord",
@@ -1013,7 +1085,7 @@ open class HealthConnectManager(private val context: Context? = null) {
                     TimeRangeFilter.between(start, end),
                     dataOriginFilter = dataOriginFilter
                 )
-                totCal.filter { sourceFilter == null || it.metadata.dataOrigin.packageName == sourceFilter }.forEach {
+                totCal.filter { matchesSource(it.metadata.dataOrigin.packageName, sourceFilter) }.forEach {
                     list.add(
                         RawHealthRecord(
                             recordType = "TotalCaloriesBurnedRecord",
@@ -1032,7 +1104,7 @@ open class HealthConnectManager(private val context: Context? = null) {
                     TimeRangeFilter.between(start, end),
                     dataOriginFilter = dataOriginFilter
                 )
-                spo2.filter { sourceFilter == null || it.metadata.dataOrigin.packageName == sourceFilter }.forEach {
+                spo2.filter { matchesSource(it.metadata.dataOrigin.packageName, sourceFilter) }.forEach {
                     list.add(
                         RawHealthRecord(
                             recordType = "OxygenSaturationRecord",
@@ -1051,7 +1123,7 @@ open class HealthConnectManager(private val context: Context? = null) {
                     TimeRangeFilter.between(start, end),
                     dataOriginFilter = dataOriginFilter
                 )
-                resp.filter { sourceFilter == null || it.metadata.dataOrigin.packageName == sourceFilter }.forEach {
+                resp.filter { matchesSource(it.metadata.dataOrigin.packageName, sourceFilter) }.forEach {
                     list.add(
                         RawHealthRecord(
                             recordType = "RespiratoryRateRecord",
@@ -1070,7 +1142,7 @@ open class HealthConnectManager(private val context: Context? = null) {
                     TimeRangeFilter.between(start, end),
                     dataOriginFilter = dataOriginFilter
                 )
-                skin.filter { sourceFilter == null || it.metadata.dataOrigin.packageName == sourceFilter }.forEach {
+                skin.filter { matchesSource(it.metadata.dataOrigin.packageName, sourceFilter) }.forEach {
                     val count = it.deltas.size
                     val base = it.baseline?.inCelsius?.let { b -> "Base: ${"%.1f".format(b)}°C, " } ?: ""
                     list.add(

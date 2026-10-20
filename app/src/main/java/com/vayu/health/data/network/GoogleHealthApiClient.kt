@@ -66,12 +66,10 @@ class GoogleHealthApiClient(
         }
 
         val clientId = preferences.getGoogleHealthClientId()
-        val clientSecret = preferences.getGoogleHealthClientSecret()
 
         try {
             val formBody = FormBody.Builder()
                 .add("client_id", clientId)
-                .add("client_secret", clientSecret)
                 .add("refresh_token", refreshToken)
                 .add("grant_type", "refresh_token")
                 .build()
@@ -85,7 +83,7 @@ class GoogleHealthApiClient(
             val responseBody = response.body?.string()
 
             if (!response.isSuccessful || responseBody.isNullOrBlank()) {
-                Log.e(TAG, "Token refresh failed with code ${response.code}: $responseBody")
+                Log.e(TAG, "Token refresh failed with code ${response.code}")
                 return@withContext null
             }
 
